@@ -226,6 +226,110 @@
   padding: 2.25rem 1.5rem;
 }
 
+.contentLayout {
+  display: grid;
+  grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+  gap: 1.35rem;
+  align-items: start;
+  margin-top: 1.15rem;
+}
+
+.docSidebar {
+  position: sticky;
+  top: 94px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(10px);
+  padding: 0.76rem;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.08);
+}
+
+.dark .docSidebar {
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
+}
+
+.docSidebarLabel {
+  margin-bottom: 0.52rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.64rem;
+  color: var(--text-muted);
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.docSidebarNav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.34rem;
+  margin-bottom: 0.62rem;
+}
+
+.docSidebarLink {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.56rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 0.44rem 0.5rem;
+  text-decoration: none;
+  color: var(--text-faint);
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.docSidebarLink:hover {
+  border-color: var(--border);
+  background: var(--surface-alt);
+  color: var(--text-strong);
+}
+
+.docSidebarLinkActive {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.docSidebarIndex {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+}
+
+.docSidebarText {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+
+.docSidebarPrintButton {
+  appearance: none;
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  height: 32px;
+  padding: 0 0.72rem;
+  line-height: 1;
+  background: var(--surface-alt);
+  color: var(--text-soft);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  font-family: var(--font-geist-mono), monospace;
+  cursor: pointer;
+  transition: transform 0.18s ease, background-color 0.18s ease;
+}
+
+.docSidebarPrintButton:hover {
+  transform: translateY(-1px);
+  background: var(--accent-soft);
+}
+
+.contentMain {
+  min-width: 0;
+}
+
 .cover {
   border-bottom: 1px solid var(--border);
   padding-bottom: 2.2rem;
@@ -319,7 +423,7 @@
 .section {
   border-bottom: 1px solid var(--border);
   padding: 2.65rem 0;
-  scroll-margin-top: 136px;
+  scroll-margin-top: 104px;
 }
 
 .section:last-of-type {
@@ -955,10 +1059,45 @@
 }
 
 @media (max-width: 1024px) {
-  .docNavInner,
   .container {
     padding-left: 1rem;
     padding-right: 1rem;
+  }
+
+  .contentLayout {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin-top: 0.9rem;
+  }
+
+  .docSidebar {
+    position: static;
+    border-radius: 12px;
+    padding: 0.64rem;
+  }
+
+  .docSidebarNav {
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 0.42rem;
+    padding-bottom: 0.16rem;
+  }
+
+  .docSidebarNav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .docSidebarLink {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    padding: 0.4rem 0.56rem;
+  }
+
+  .docSidebarPrintButton {
+    width: fit-content;
+    min-width: 138px;
   }
 
   .cover {
@@ -980,16 +1119,6 @@
     padding-top: 66px;
   }
 
-  .docNav {
-    top: 80px;
-  }
-
-  .docNavInner {
-    min-height: 42px;
-    padding-top: 0.28rem;
-    padding-bottom: 0.28rem;
-  }
-
   .container {
     padding-top: 1.55rem;
     padding-bottom: 1.55rem;
@@ -1005,24 +1134,19 @@
 }
 
 @media (max-width: 640px) {
-  .docNavLinks a {
-    height: 30px;
-    padding-left: 0.46rem;
-    padding-right: 0.46rem;
-    font-size: 0.64rem;
-    letter-spacing: 0.035em;
+  .docSidebarLink {
+    min-height: 32px;
+    padding: 0.34rem 0.52rem;
   }
 
-  .navPrintButton {
-    height: 30px;
+  .docSidebarText {
     font-size: 0.64rem;
-    padding-left: 0.58rem;
-    padding-right: 0.58rem;
   }
 
-  .navPrintButton {
-    padding: 0.32rem 0.58rem;
-    font-size: 0.67rem;
+  .docSidebarPrintButton {
+    font-size: 0.64rem;
+    padding-left: 0.62rem;
+    padding-right: 0.62rem;
   }
 
   .metricGrid,
@@ -1086,6 +1210,11 @@
   .container {
     max-width: 100%;
     padding: 0;
+  }
+
+  .contentLayout {
+    display: block;
+    margin-top: 0;
   }
 
   .cover {

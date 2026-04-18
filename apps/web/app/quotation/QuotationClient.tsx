@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
@@ -609,6 +609,7 @@ export default function QuotationClient() {
   const isDark = theme === "dark";
   const rootRef = useRef<HTMLElement>(null);
   const [wardCount, setWardCount] = useState(20);
+  const [activeSection, setActiveSection] = useState(navItems[0]?.href ?? "#basics");
 
   const handlePrint = () => {
     if (typeof window === "undefined") return;
@@ -621,6 +622,34 @@ export default function QuotationClient() {
   const annualCost = monthlyCost * 12;
   const yearlyComplaints = wardCount * COMPLAINTS_PER_WARD_PER_MONTH * 12;
   const perGrievance = (annualCost / yearlyComplaints).toFixed(2);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const updateActiveSection = () => {
+      const offset = 132;
+      const scrollY = window.scrollY + offset;
+      let current = navItems[0]?.href ?? "#basics";
+
+      for (const item of navItems) {
+        const section = document.querySelector(item.href);
+        if (section instanceof HTMLElement && scrollY >= section.offsetTop) {
+          current = item.href;
+        }
+      }
+
+      setActiveSection((prev) => (prev === current ? prev : current));
+    };
+
+    updateActiveSection();
+    window.addEventListener("scroll", updateActiveSection, { passive: true });
+    window.addEventListener("resize", updateActiveSection);
+
+    return () => {
+      window.removeEventListener("scroll", updateActiveSection);
+      window.removeEventListener("resize", updateActiveSection);
+    };
+  }, []);
 
   useGSAP(
     () => {
@@ -720,21 +749,6 @@ export default function QuotationClient() {
         <Animatedheader />
       </div>
 
-      <nav className={cx(styles.docNav, styles.printHidden)}>
-        <div className={styles.docNavInner}>
-          <div className={styles.docNavLinks}>
-            {navItems.map((item) => (
-              <a key={item.href} href={item.href}>
-                {item.label}
-              </a>
-            ))}
-          </div>
-          <button type="button" className={styles.navPrintButton} onClick={handlePrint}>
-            Print / Save PDF
-          </button>
-        </div>
-      </nav>
-
       <div className={styles.container}>
         <header className={styles.cover}>
           <div>
@@ -775,6 +789,37 @@ export default function QuotationClient() {
             </p>
           </div>
         </header>
+
+        <div className={styles.contentLayout}>
+          <aside className={cx(styles.docSidebar, styles.printHidden)}>
+            <p className={styles.docSidebarLabel}>In This Document</p>
+            <nav className={styles.docSidebarNav} aria-label="Quotation section navigation">
+              {navItems.map((item) => {
+                const [index, ...words] = item.label.split(" ");
+                const title = words.join(" ");
+
+                return (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setActiveSection(item.href)}
+                    className={cx(
+                      styles.docSidebarLink,
+                      activeSection === item.href && styles.docSidebarLinkActive
+                    )}
+                  >
+                    <span className={styles.docSidebarIndex}>{index}</span>
+                    <span className={styles.docSidebarText}>{title}</span>
+                  </a>
+                );
+              })}
+            </nav>
+            <button type="button" className={styles.docSidebarPrintButton} onClick={handlePrint}>
+              Print / Save PDF
+            </button>
+          </aside>
+
+          <div className={styles.contentMain}>
 
         <section id="basics" className={styles.section}>
           <SectionHeader number="01" title="Basic Details" />
@@ -1150,6 +1195,8 @@ export default function QuotationClient() {
           </p>
           <span className={styles.footerBrand}>Team 404 · JanSamadhan · 2026</span>
         </footer>
+          </div>
+        </div>
       </div>
 
       <div className={styles.printHidden}>
