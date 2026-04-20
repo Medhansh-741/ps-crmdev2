@@ -1615,6 +1615,7 @@ export default function ChatPanel({ onClose: _onClose }: { onClose?: () => void 
           <Send size={16} />
         </button>
       </div>
+    </div>
     </>
   );
 
