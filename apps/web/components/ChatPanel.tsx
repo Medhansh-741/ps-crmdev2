@@ -1004,15 +1004,14 @@ export default function ChatPanel({ onClose: _onClose }: { onClose?: () => void 
           setPendingComplaint(null); // transition to image-based flow
           setDuplicateContext(null);
           
-          if (!locationConfirmed) {
-            setPendingLocation({
-              lat: preview.latitude,
-              lng: preview.longitude,
-              accuracy: preview.accuracy,
-              timestamp: preview.timestamp,
-            });
-            setLocationConfirmed(false);
-          }
+          // Force fresh location state for a new photo, ensuring the bar is visible and confirmed is false
+          setPendingLocation({
+            lat: preview.latitude,
+            lng: preview.longitude,
+            accuracy: preview.accuracy,
+            timestamp: preview.timestamp,
+          });
+          setLocationConfirmed(false);
 
           // If location is already confirmed, we can offer immediate YES
           const prompt = locationConfirmed 
@@ -1064,6 +1063,233 @@ export default function ChatPanel({ onClose: _onClose }: { onClose?: () => void 
     },
     [processImageFile],
   );
+
+
+  /* ----- confirm image ticket via FastAPI /confirm ----- */
+  const confirmImageTicket = useCallback(async (forceSubmit = false) => {
+    if (!pendingImagePreview || !pendingImageFile) return;
+    setSubmitting(true);
+
+    try {
+      const token = await getAuthToken();
+      if (!token) {
+        addBotMessage(t(selectedLanguage, "login_required"));
+        setSubmitting(false);
+        return;
+      }
+
+      if (!pendingLocation || !locationConfirmed) {
+        addBotMessage(t(selectedLanguage, "confirm_location_first"));
+        setSubmitting(false);
+        return;
+      }
+
+      const formData = new FormData();
+      const submitLocation = pendingLocation;
+      formData.append("image", pendingImageFile);
+      formData.append("user_text", "Confirmed by user");
+      formData.append("latitude", submitLocation.lat.toString());
+      formData.append("longitude", submitLocation.lng.toString());
+      formData.append("accuracy", submitLocation.accuracy.toString());
+      formData.append("timestamp", submitLocation.timestamp);
+      formData.append("child_id", pendingImagePreview.child_id.toString());
+      formData.append("title", pendingImagePreview.title);
+      formData.append("description", pendingImagePreview.description);
+      formData.append("severity_db", pendingImagePreview.severity_db);
+      formData.append("force_submit", String(forceSubmit));
+
+      const res = await fetch(`${API_URL}/confirm`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Submission failed" }));
+        const detail = err?.detail;
+        if (res.status === 409 && detail?.code === "DUPLICATE_DETECTED" && detail?.duplicate) {
+          setDuplicateContext({ mode: "image", duplicate: detail.duplicate as DuplicateMatch });
+          addBotMessage(
+            `⚠️ Similar complaint already exists (Ticket **${detail.duplicate.ticket_id}**, ${detail.duplicate.distance_m}m away, status: **${detail.duplicate.status}**). Type **UPVOTE** to support it, or type **YES AGAIN** to upload anyway.`,
+          );
+          return;
+        }
+        throw new Error(detail?.message || detail || "Failed to submit complaint");
+      }
+
+      const created = await res.json();
+
+      // Trigger point awarding for AI-confirmed ticket
+      try {
+        if (userIdRef.current) {
+          fetch("/api/gamification/award", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              ticket_id: created.ticket_id || created.id, 
+              userId: userIdRef.current 
+            }),
+          }).catch(err => console.error("[Gamification] Failed to award points:", err));
+        }
+      } catch (err) {
+        console.error("[Gamification] Error in award trigger:", err);
+      }
+
+      setSubmitted(true);
+      if (userIdRef.current) clearSharedState(`jansamadhan_pending_state_${userIdRef.current}`).catch(console.error);
+      setPendingImagePreview(null);
+      setPendingImageFile(null);
+      setPendingImageDataUrl(null);
+      setPendingLocation(null);
+      setDuplicateContext(null);
+      setLocationConfirmed(false);
+      addBotMessage(
+        `${t(selectedLanguage, "success_msg")}\n\n🎫 Ticket ID: **${created.ticket_id}**\n📋 Issue: **${created.issue_name}**\n🏢 Department: **${created.authority}**\nStatus: **Submitted**\n\nYou can track your complaint from the "Your Tickets" section. Is there anything else I can help you with?`,
+      );
+    } catch (err) {
+      const msg = toUserFacingError(err);
+      addBotMessage(t(selectedLanguage, "fail_msg"));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [pendingImagePreview, pendingImageFile, pendingLocation, locationConfirmed, selectedLanguage, addBotMessage]);
+
+  /* ----- submit text-based complaint to Supabase ----- */
+  const submitComplaint = useCallback(async (forceSubmit = false) => {
+    if (!pendingComplaint) return;
+    setSubmitting(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const user = session?.user;
+      const accessToken = session?.access_token ?? "";
+
+      if (!user) {
+        addBotMessage(t(selectedLanguage, "login_required"));
+        setSubmitting(false);
+        return;
+      }
+
+      if (!pendingLocation || !locationConfirmed) {
+        addBotMessage(t(selectedLanguage, "confirm_location_first"));
+        setSubmitting(false);
+        return;
+      }
+
+      const submitLocation = pendingLocation;
+      const categoryId = pendingComplaint.child_id;
+      const severityLevel = severityToLevel(pendingComplaint.severity);
+
+      const res = await fetch("/api/complaints", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({
+          category_id: categoryId,
+          issue_type: pendingComplaint.issue_type,
+          title: pendingComplaint.title,
+          description: pendingComplaint.description,
+          severity: severityLevel,
+          latitude: submitLocation.lat,
+          longitude: submitLocation.lng,
+          accuracy: submitLocation.accuracy,
+          timestamp: submitLocation.timestamp,
+          city: "Delhi",
+          force_submit: forceSubmit,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 409 && data?.code === "DUPLICATE_DETECTED" && data?.duplicate) {
+          setDuplicateContext({ mode: "text", duplicate: data.duplicate as DuplicateMatch });
+          addBotMessage(
+            `⚠️ Similar complaint already exists (Ticket **${data.duplicate.ticket_id}**, ${data.duplicate.distance_m}m away, status: **${data.duplicate.status}**). Type **UPVOTE** to support it, or type **YES AGAIN** to upload anyway.`,
+          );
+          setSubmitting(false);
+          return;
+        }
+        throw new Error(data.error || "Failed to submit complaint");
+      }
+
+      // Trigger point awarding for text-based ticket
+      try {
+        if (userIdRef.current) {
+          fetch("/api/gamification/award", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              ticket_id: data.complaint?.ticket_id || data.complaint?.id, 
+              userId: userIdRef.current 
+            }),
+          }).catch(err => console.error("[Gamification] Failed to award points:", err));
+        }
+      } catch (err) {
+        console.error("[Gamification] Error in award trigger:", err);
+      }
+
+      setSubmitted(true);
+      if (userIdRef.current) clearSharedState(`jansamadhan_pending_state_${userIdRef.current}`).catch(console.error);
+      setPendingComplaint(null);
+      setPendingLocation(null);
+      setDuplicateContext(null);
+      setLocationConfirmed(false);
+      addBotMessage(
+        `${t(selectedLanguage, "success_msg")}\n\n🎫 Ticket ID: **${data.complaint?.ticket_id ?? data.complaint?.id}**\nStatus: **Submitted**\n\nYou can track your complaint from the "Your Tickets" section. Is there anything else I can help you with?`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Submission failed";
+      addBotMessage(t(selectedLanguage, "fail_msg"));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [pendingComplaint, pendingLocation, locationConfirmed, pendingImageFile, pendingImageDataUrl, selectedLanguage, addBotMessage]);
+
+  const upvoteDuplicate = useCallback(async () => {
+    if (!duplicateContext?.duplicate?.id) return;
+    setSubmitting(true);
+    try {
+      const token = await getAuthToken();
+      if (!token) {
+        addBotMessage(t(selectedLanguage, "login_required"));
+        setSubmitting(false);
+        return;
+      }
+
+      const res = await fetch("/api/complaints", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ complaint_id: duplicateContext.duplicate.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to upvote complaint");
+
+      if (userIdRef.current) clearSharedState(`jansamadhan_pending_state_${userIdRef.current}`).catch(console.error);
+      setDuplicateContext(null);
+      setPendingComplaint(null);
+      setPendingImagePreview(null);
+      setPendingImageFile(null);
+      setPendingImageDataUrl(null);
+      setPendingLocation(null);
+      setLocationConfirmed(false);
+      addBotMessage(
+        `✅ Upvoted ticket **${data.complaint?.ticket_id ?? duplicateContext.duplicate.ticket_id}**. Current status: **${data.complaint?.status ?? duplicateContext.duplicate.status}**. Thank you for supporting status transparency.`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Upvote failed";
+      addBotMessage(`❌ ${msg}.`);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [duplicateContext, addBotMessage]);
 
   /* ----- send a user message ----- */
   const handleSend = useCallback(async () => {
@@ -1170,14 +1396,10 @@ export default function ChatPanel({ onClose: _onClose }: { onClose?: () => void 
         setPendingImageDataUrl(null);
         setDuplicateContext(null);
 
-        // Fetch location to show on map, but we'll prioritize the photo request in the message
+        // Fetch fresh location for text extraction and force confirmation
         const currentLocation = await getLocation();
         setPendingLocation(currentLocation);
-        
-        // Only set confirmed=false if not already confirmed (parity with image flow)
-        if (!locationConfirmed) {
-          setLocationConfirmed(false);
-        }
+        setLocationConfirmed(false);
 
         let geoDetails: GeoDetails | null = null;
         try {
@@ -1195,233 +1417,7 @@ export default function ChatPanel({ onClose: _onClose }: { onClose?: () => void 
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, pendingComplaint, pendingImagePreview, duplicateContext, scrollToBottom, addBotMessage]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /* ----- confirm image ticket via FastAPI /confirm ----- */
-  const confirmImageTicket = useCallback(async (forceSubmit = false) => {
-    if (!pendingImagePreview || !pendingImageFile) return;
-    setSubmitting(true);
-
-    try {
-      const token = await getAuthToken();
-      if (!token) {
-        addBotMessage(t(selectedLanguage, "login_required"));
-        setSubmitting(false);
-        return;
-      }
-
-      if (!pendingLocation || !locationConfirmed) {
-        addBotMessage(t(selectedLanguage, "confirm_location_first"));
-        setSubmitting(false);
-        return;
-      }
-
-      const formData = new FormData();
-      const submitLocation = pendingLocation;
-      formData.append("image", pendingImageFile);
-      formData.append("user_text", "Confirmed by user");
-      formData.append("latitude", submitLocation.lat.toString());
-      formData.append("longitude", submitLocation.lng.toString());
-      formData.append("accuracy", submitLocation.accuracy.toString());
-      formData.append("timestamp", submitLocation.timestamp);
-      formData.append("child_id", pendingImagePreview.child_id.toString());
-      formData.append("title", pendingImagePreview.title);
-      formData.append("description", pendingImagePreview.description);
-      formData.append("severity_db", pendingImagePreview.severity_db);
-      formData.append("force_submit", String(forceSubmit));
-
-      const res = await fetch(`${API_URL}/confirm`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: "Submission failed" }));
-        const detail = err?.detail;
-        if (res.status === 409 && detail?.code === "DUPLICATE_DETECTED" && detail?.duplicate) {
-          setDuplicateContext({ mode: "image", duplicate: detail.duplicate as DuplicateMatch });
-          addBotMessage(
-            `⚠️ Similar complaint already exists (Ticket **${detail.duplicate.ticket_id}**, ${detail.duplicate.distance_m}m away, status: **${detail.duplicate.status}**). Type **UPVOTE** to support it, or type **YES AGAIN** to upload anyway.`,
-          );
-          return;
-        }
-        throw new Error(detail?.message || detail || "Failed to submit complaint");
-      }
-
-      const created = await res.json();
-
-      // Trigger point awarding for AI-confirmed ticket
-      try {
-        if (userIdRef.current) {
-          fetch("/api/gamification/award", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              ticket_id: created.ticket_id || created.id, 
-              userId: userIdRef.current 
-            }),
-          }).catch(err => console.error("[Gamification] Failed to award points:", err));
-        }
-      } catch (err) {
-        console.error("[Gamification] Error in award trigger:", err);
-      }
-
-      setSubmitted(true);
-      if (userIdRef.current) clearSharedState(`jansamadhan_pending_state_${userIdRef.current}`).catch(console.error);
-      setPendingImagePreview(null);
-      setPendingImageFile(null);
-      setPendingImageDataUrl(null);
-      setPendingLocation(null);
-      setDuplicateContext(null);
-      setLocationConfirmed(false);
-      addBotMessage(
-        `${t(selectedLanguage, "success_msg")}\n\n🎫 Ticket ID: **${created.ticket_id}**\n📋 Issue: **${created.issue_name}**\n🏢 Department: **${created.authority}**\nStatus: **Submitted**\n\nYou can track your complaint from the "Your Tickets" section. Is there anything else I can help you with?`,
-      );
-    } catch (err) {
-      const msg = toUserFacingError(err);
-      addBotMessage(t(selectedLanguage, "fail_msg"));
-    } finally {
-      setSubmitting(false);
-    }
-  }, [pendingImagePreview, pendingImageFile, pendingLocation, addBotMessage]);
-
-  /* ----- submit text-based complaint to Supabase ----- */
-  const submitComplaint = useCallback(async (forceSubmit = false) => {
-    if (!pendingComplaint) return;
-    setSubmitting(true);
-
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user;
-      const accessToken = session?.access_token ?? "";
-
-      if (!user) {
-        addBotMessage(t(selectedLanguage, "login_required"));
-        setSubmitting(false);
-        return;
-      }
-
-      if (!pendingLocation || !locationConfirmed) {
-        addBotMessage(t(selectedLanguage, "confirm_location_first"));
-        setSubmitting(false);
-        return;
-      }
-
-      const submitLocation = pendingLocation;
-      const categoryId = pendingComplaint.child_id;
-      const severityLevel = severityToLevel(pendingComplaint.severity);
-
-      const res = await fetch("/api/complaints", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: JSON.stringify({
-          category_id: categoryId,
-          issue_type: pendingComplaint.issue_type,
-          title: pendingComplaint.title,
-          description: pendingComplaint.description,
-          severity: severityLevel,
-          latitude: submitLocation.lat,
-          longitude: submitLocation.lng,
-          accuracy: submitLocation.accuracy,
-          timestamp: submitLocation.timestamp,
-          city: "Delhi",
-          force_submit: forceSubmit,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (res.status === 409 && data?.code === "DUPLICATE_DETECTED" && data?.duplicate) {
-          setDuplicateContext({ mode: "text", duplicate: data.duplicate as DuplicateMatch });
-          addBotMessage(
-            `⚠️ Similar complaint already exists (Ticket **${data.duplicate.ticket_id}**, ${data.duplicate.distance_m}m away, status: **${data.duplicate.status}**). Type **UPVOTE** to support it, or type **YES AGAIN** to upload anyway.`,
-          );
-          setSubmitting(false);
-          return;
-        }
-        throw new Error(data.error || "Failed to submit complaint");
-      }
-
-      // Trigger point awarding for text-based ticket
-      try {
-        if (userIdRef.current) {
-          fetch("/api/gamification/award", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              ticket_id: data.complaint?.ticket_id || data.complaint?.id, 
-              userId: userIdRef.current 
-            }),
-          }).catch(err => console.error("[Gamification] Failed to award points:", err));
-        }
-      } catch (err) {
-        console.error("[Gamification] Error in award trigger:", err);
-      }
-
-      setSubmitted(true);
-      if (userIdRef.current) clearSharedState(`jansamadhan_pending_state_${userIdRef.current}`).catch(console.error);
-      setPendingComplaint(null);
-      setPendingLocation(null);
-      setDuplicateContext(null);
-      setLocationConfirmed(false);
-      addBotMessage(
-        `${t(selectedLanguage, "success_msg")}\n\n🎫 Ticket ID: **${data.complaint?.ticket_id ?? data.complaint?.id}**\nStatus: **Submitted**\n\nYou can track your complaint from the "Your Tickets" section. Is there anything else I can help you with?`,
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Submission failed";
-      addBotMessage(t(selectedLanguage, "fail_msg"));
-    } finally {
-      setSubmitting(false);
-    }
-  }, [pendingComplaint, pendingLocation, addBotMessage]);
-
-  const upvoteDuplicate = useCallback(async () => {
-    if (!duplicateContext?.duplicate?.id) return;
-    setSubmitting(true);
-    try {
-      const token = await getAuthToken();
-      if (!token) {
-        addBotMessage(t(selectedLanguage, "login_required"));
-        setSubmitting(false);
-        return;
-      }
-
-      const res = await fetch("/api/complaints", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ complaint_id: duplicateContext.duplicate.id }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to upvote complaint");
-
-      if (userIdRef.current) clearSharedState(`jansamadhan_pending_state_${userIdRef.current}`).catch(console.error);
-      setDuplicateContext(null);
-      setPendingComplaint(null);
-      setPendingImagePreview(null);
-      setPendingImageFile(null);
-      setPendingImageDataUrl(null);
-      setPendingLocation(null);
-      setLocationConfirmed(false);
-      addBotMessage(
-        `✅ Upvoted ticket **${data.complaint?.ticket_id ?? duplicateContext.duplicate.ticket_id}**. Current status: **${data.complaint?.status ?? duplicateContext.duplicate.status}**. Thank you for supporting status transparency.`,
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Upvote failed";
-      addBotMessage(`❌ ${msg}.`);
-    } finally {
-      setSubmitting(false);
-    }
-  }, [duplicateContext, addBotMessage]);
+  }, [input, isLoading, pendingComplaint, pendingImagePreview, duplicateContext, locationConfirmed, pendingLocation, pendingImageFile, pendingImageDataUrl, selectedLanguage, scrollToBottom, addBotMessage, upvoteDuplicate, confirmImageTicket, submitComplaint]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ----- auto-scroll on new messages ----- */
   useEffect(() => scrollToBottom(), [messages, scrollToBottom]);
@@ -1636,9 +1632,11 @@ export default function ChatPanel({ onClose: _onClose }: { onClose?: () => void 
           </div>
           <div className="mt-2 flex items-start justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => setLocationConfirmed(true)} className="rounded-md bg-[#4f392e] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#b4725a] transition-all duration-200 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-[#b4725a] focus:ring-offset-2 dark:bg-[#C9A84C] dark:text-black dark:hover:bg-[#d4b45c] dark:focus:ring-[#C9A84C] dark:focus:ring-offset-[#161616]">
-                {t(selectedLanguage, "confirm_location_btn")}
-              </button>
+              {!locationConfirmed && (
+                <button type="button" onClick={() => setLocationConfirmed(true)} className="rounded-md bg-[#4f392e] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#b4725a] transition-all duration-200 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-[#b4725a] focus:ring-offset-2 dark:bg-[#C9A84C] dark:text-black dark:hover:bg-[#d4b45c] dark:focus:ring-[#C9A84C] dark:focus:ring-offset-[#161616]">
+                  {t(selectedLanguage, "confirm_location_btn")}
+                </button>
+              )}
               <button type="button" onClick={async () => { const loc = await getLocation(); setPendingLocation(loc); setLocationConfirmed(false); }} className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-2 dark:border-[#2a2a2a] dark:text-gray-200 dark:hover:bg-[#2a2a2a] dark:focus:ring-[#2a2a2a] dark:focus:ring-offset-[#161616]">
                 {t(selectedLanguage, "move_pin_gps")}
               </button>
