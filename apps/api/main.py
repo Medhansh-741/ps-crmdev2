@@ -93,7 +93,13 @@ origins = [
     "https://jansamadhan.perkkk.dev",
     "https://api.jansamadhan.perkkk.dev",
     "https://ps-crmdev1-production.up.railway.app",
+    "https://ps-crmdev1-429388782457.europe-west1.run.app",
 ]
+
+# Allow adding origins via environment variable
+extra_origins = os.getenv("ALLOWED_ORIGINS", "")
+if extra_origins:
+    origins.extend([o.strip() for o in extra_origins.split(",") if o.strip()])
 
 app.add_middleware(
     CORSMiddleware,

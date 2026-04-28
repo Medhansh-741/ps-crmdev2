@@ -7,7 +7,15 @@ steps:
   # 2. Build and Push Web Service
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-web'
-    args: ['build', '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/crm-web:$COMMIT_SHA', 'apps/web']
+    args: [
+      'build', 
+      '-t', '$_LOCATION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/crm-web:$COMMIT_SHA', 
+      '--build-arg', 'NEXT_PUBLIC_API_URL=$_API_URL',
+      '--build-arg', 'NEXT_PUBLIC_SUPABASE_URL=$_SUPABASE_URL',
+      '--build-arg', 'NEXT_PUBLIC_SUPABASE_ANON_KEY=$_SUPABASE_ANON_KEY',
+      '--build-arg', 'NEXT_PUBLIC_RECAPTCHA_SITE_KEY=$_RECAPTCHA_SITE_KEY',
+      'apps/web'
+    ]
 
   # 3. Build and Push AI Service
   - name: 'gcr.io/cloud-builders/docker'
@@ -68,6 +76,10 @@ images:
 substitutions:
   _LOCATION: us-central1
   _REPOSITORY: crm-app
+  _API_URL: "https://api-429388782457.europe-west1.run.app"
+  _SUPABASE_URL: "https://bsdxzdydrhraaawkzglw.supabase.co"
+  _SUPABASE_ANON_KEY: "dummy"
+  _RECAPTCHA_SITE_KEY: "6LenAoQsAAAAAGgcAoROrj1GJbArEGsOMxdPMXto"
 
 options:
   logging: CLOUD_LOGGING_ONLY
