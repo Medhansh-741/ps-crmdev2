@@ -21,6 +21,9 @@ const MapComponent = dynamic(() => import("@/components/MapComponent"), {
 });
 
 import { cn } from "@/src/lib/utils";
+import type { Feature, MultiPolygon, Polygon } from "geojson";
+
+type RegionFeature = Feature<Polygon | MultiPolygon>;
 
 export interface MapSectionProps {
   searchQuery: string;
@@ -34,6 +37,14 @@ export interface MapSectionProps {
   /** When set, renders a primary "drill-down" button over the map. */
   drillButtonLabel?: string;
   onDrill?: () => void;
+  /** Geographic region overlay (zones at Delhi level, wards at zone/ward level). */
+  regions?: RegionFeature[];
+  regionCounts?: Record<string, number>;
+  onRegionClick?: (regionId: string) => void;
+  fitToRegionId?: string;
+  choropleth?: boolean;
+  /** Show the complaint marker/heatmap layer (ward level). Default true. */
+  showComplaints?: boolean;
   className?: string;
 }
 
@@ -47,6 +58,12 @@ export const MapSection: React.FC<MapSectionProps> = ({
   onBack,
   drillButtonLabel,
   onDrill,
+  regions,
+  regionCounts,
+  onRegionClick,
+  fitToRegionId,
+  choropleth,
+  showComplaints,
   className,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -102,7 +119,14 @@ export const MapSection: React.FC<MapSectionProps> = ({
 
       {/* Leaflet Map Component Container */}
       <div className="flex-1 w-full relative z-0">
-        <MapComponent />
+        <MapComponent
+          regions={regions}
+          regionCounts={regionCounts}
+          onRegionClick={onRegionClick}
+          fitToRegionId={fitToRegionId}
+          choropleth={choropleth}
+          showComplaints={showComplaints}
+        />
         <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end gap-1.5 shadow-sm">
           {drillButtonLabel && onDrill && (
             <button

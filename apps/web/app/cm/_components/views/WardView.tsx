@@ -19,6 +19,7 @@ import { QuickActionsFooter } from "../QuickActionsFooter";
 import { InterventionReviewModal } from "../InterventionReviewModal";
 
 import { DepartmentPerf, Intervention } from "../cm-types";
+import type { WardFeature } from "../cm-geo";
 import {
   wardKpis,
   wardDepartments,
@@ -36,6 +37,8 @@ export interface WardViewProps {
   isDark: boolean;
   wardTitle: string;
   wardSubtitle: string;
+  /** The selected ward's polygon, drawn as an outline + fit. */
+  wardRegion?: WardFeature;
 }
 
 export const WardView: React.FC<WardViewProps> = ({
@@ -44,6 +47,7 @@ export const WardView: React.FC<WardViewProps> = ({
   isDark,
   wardTitle,
   wardSubtitle,
+  wardRegion,
 }) => {
   const [activeLayer, setActiveLayer] = useState("density");
   const [searchQuery, setSearchQuery] = useState("");
@@ -112,6 +116,7 @@ export const WardView: React.FC<WardViewProps> = ({
                 wardSubtitle={wardSubtitle}
                 searchPlaceholder="Search location in Ward..."
                 onBack={onBack}
+                regions={wardRegion ? [wardRegion] : undefined}
                 className="xl:h-full"
               />
               <div className="w-full xl:w-80 shrink-0 flex flex-col gap-3 xl:h-full">

@@ -12,9 +12,15 @@ import { InterventionReviewModal } from "../InterventionReviewModal";
 
 import { Intervention, InterventionTab } from "../cm-types";
 import { delhiKpis, cmInterventions, delhiZoneScores } from "../cm-mock";
+import type { ZoneFeature } from "../cm-geo";
 
 export interface DelhiOverviewViewProps {
-  onDrillToZone: () => void;
+  /** 12 MCD zone polygons (unioned ward geometries). */
+  zoneRegions: ZoneFeature[];
+  /** zoneId -> complaint count, for choropleth fill. */
+  zoneCounts: Record<string, number>;
+  /** Click a zone polygon to drill into it. */
+  onRegionClick: (zoneId: string) => void;
   triggerToast: (message: string) => void;
 }
 
@@ -26,7 +32,9 @@ const escalationTabs: InterventionTab[] = [
 ];
 
 export const DelhiOverviewView: React.FC<DelhiOverviewViewProps> = ({
-  onDrillToZone,
+  zoneRegions,
+  zoneCounts,
+  onRegionClick,
   triggerToast,
 }) => {
   const [activeLayer, setActiveLayer] = useState("density");
@@ -57,8 +65,11 @@ export const DelhiOverviewView: React.FC<DelhiOverviewViewProps> = ({
               wardTitle="Delhi Overview"
               wardSubtitle="12 Zones  •  250 Wards  •  Population: 2.1 Cr"
               searchPlaceholder="Search Zone / Ward..."
-              drillButtonLabel="Open Central Zone"
-              onDrill={onDrillToZone}
+              regions={zoneRegions}
+              regionCounts={zoneCounts}
+              onRegionClick={onRegionClick}
+              choropleth
+              showComplaints={false}
               className="xl:h-full"
             />
           </div>

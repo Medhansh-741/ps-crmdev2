@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { CheckCircle2 } from "lucide-react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
@@ -10,10 +10,24 @@ import { CMHeader, ViewLevel } from "./_components/CMHeader";
 import { DelhiOverviewView } from "./_components/views/DelhiOverviewView";
 import { ZoneView } from "./_components/views/ZoneView";
 import { WardView } from "./_components/views/WardView";
-import { ZoneSummary, WardSummary } from "./_components/cm-types";
-import { zones, centralWards } from "./_components/cm-mock";
+import {
+  useWardGeoJSON,
+  useComplaintPoints,
+  buildZoneRegions,
+  wardRegionsForZone,
+  wardByNo,
+  countPointsInRegions,
+} from "./_components/cm-geo";
+import { ZONE_BY_ID, type ZoneId } from "./_components/ward-zone-map";
 
 gsap.registerPlugin(useGSAP);
+
+/** "FATEH NAGAR" -> "Fateh Nagar" */
+function titleCase(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export default function CMCommandCenterPage() {
   const { theme } = useTheme();
@@ -24,12 +38,36 @@ export default function CMCommandCenterPage() {
 
   // Navigation state machine: Delhi -> Zone -> Ward
   const [view, setView] = useState<ViewLevel>("delhi");
-  const [selectedZone, setSelectedZone] = useState<ZoneSummary | null>(null);
-  const [selectedWard, setSelectedWard] = useState<WardSummary | null>(null);
+  const [selectedZoneId, setSelectedZoneId] = useState<ZoneId | null>(null);
+  const [selectedWardNo, setSelectedWardNo] = useState<number | null>(null);
 
   const [actionSuccessToast, setActionSuccessToast] = useState<string | null>(null);
 
   const viewRef = useRef<HTMLDivElement>(null);
+
+  // Real geographic data (ward polygons + complaint points)
+  const { wards } = useWardGeoJSON();
+  const { points } = useComplaintPoints();
+
+  const zoneRegions = useMemo(() => buildZoneRegions(wards), [wards]);
+  const zoneCounts = useMemo(
+    () => countPointsInRegions(zoneRegions, points),
+    [zoneRegions, points]
+  );
+
+  const zoneWardRegions = useMemo(
+    () => (selectedZoneId ? wardRegionsForZone(wards, selectedZoneId) : []),
+    [wards, selectedZoneId]
+  );
+  const wardCounts = useMemo(
+    () => countPointsInRegions(zoneWardRegions, points),
+    [zoneWardRegions, points]
+  );
+
+  const wardRegion = useMemo(
+    () => (selectedWardNo != null ? wardByNo(wards, selectedWardNo) : undefined),
+    [wards, selectedWardNo]
+  );
 
   // Animate the active view on every level change
   useGSAP(
@@ -60,32 +98,35 @@ export default function CMCommandCenterPage() {
     setTimeout(() => setActionSuccessToast(null), 4000);
   };
 
-  // Drill-down handlers (map buttons select a representative zone/ward for now)
-  const drillToZone = () => {
-    const central = zones.find((z) => z.id === "central") ?? zones[0];
-    setSelectedZone(central);
+  // Drill-down handlers — driven by the clicked map region's id
+  const drillToZone = (zoneId: string) => {
+    setSelectedZoneId(zoneId as ZoneId);
     setView("zone");
   };
 
-  const drillToWard = () => {
-    const ward = centralWards.find((w) => w.number === 91) ?? centralWards[0];
-    setSelectedWard(ward);
+  const drillToWard = (wardNo: string) => {
+    setSelectedWardNo(Number(wardNo));
     setView("ward");
   };
 
   // Breadcrumb / location-button navigation
   const goToLevel = (target: ViewLevel) => {
     if (target === "delhi") {
-      setSelectedZone(null);
-      setSelectedWard(null);
+      setSelectedZoneId(null);
+      setSelectedWardNo(null);
     } else if (target === "zone") {
-      setSelectedWard(null);
+      setSelectedWardNo(null);
     }
     setView(target);
   };
 
-  const zoneName = selectedZone?.name ?? "Central";
-  const wardLabel = selectedWard ? `Ward ${selectedWard.number} - ${selectedWard.name}` : "Ward 91";
+  const zoneName = selectedZoneId ? ZONE_BY_ID[selectedZoneId]?.name ?? "Zone" : "Central";
+  const wardNameRaw = wardRegion?.properties.wardname;
+  const wardLabel =
+    selectedWardNo != null
+      ? `Ward ${selectedWardNo}${wardNameRaw ? ` - ${titleCase(wardNameRaw)}` : ""}`
+      : "Ward";
+  const wardPop = wardRegion?.properties.totalpop;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-50 text-slate-800 antialiased dark:bg-[#121212] dark:text-slate-100 font-sans">
@@ -108,13 +149,20 @@ export default function CMCommandCenterPage() {
 
       <div ref={viewRef} className="flex flex-1 flex-col min-h-0">
         {view === "delhi" && (
-          <DelhiOverviewView onDrillToZone={drillToZone} triggerToast={triggerToast} />
+          <DelhiOverviewView
+            zoneRegions={zoneRegions}
+            zoneCounts={zoneCounts}
+            onRegionClick={drillToZone}
+            triggerToast={triggerToast}
+          />
         )}
         {view === "zone" && (
           <ZoneView
             zoneName={zoneName}
             onBack={() => goToLevel("delhi")}
-            onDrillToWard={drillToWard}
+            wardRegions={zoneWardRegions}
+            wardCounts={wardCounts}
+            onRegionClick={drillToWard}
             triggerToast={triggerToast}
             isDark={isDark}
           />
@@ -125,7 +173,8 @@ export default function CMCommandCenterPage() {
             triggerToast={triggerToast}
             isDark={isDark}
             wardTitle={`${wardLabel} (Delhi)`}
-            wardSubtitle={`${zoneName} Zone  |  Population: 2.13 Lakh  |  Households: 38,542`}
+            wardSubtitle={`${zoneName} Zone${wardPop ? `  |  Population: ${wardPop.toLocaleString("en-IN")}` : ""}`}
+            wardRegion={wardRegion}
           />
         )}
       </div>

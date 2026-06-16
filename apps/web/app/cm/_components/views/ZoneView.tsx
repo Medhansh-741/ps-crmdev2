@@ -15,6 +15,7 @@ import { QuickActionsFooter } from "../QuickActionsFooter";
 import { InterventionReviewModal } from "../InterventionReviewModal";
 
 import { DepartmentPerf, Intervention, InterventionTab } from "../cm-types";
+import type { WardFeature } from "../cm-geo";
 import {
   zoneKpis,
   zoneDepartments,
@@ -29,7 +30,12 @@ import {
 export interface ZoneViewProps {
   zoneName: string;
   onBack: () => void;
-  onDrillToWard: () => void;
+  /** Ward polygons belonging to this zone. */
+  wardRegions: WardFeature[];
+  /** ward_no -> complaint count, for choropleth fill. */
+  wardCounts: Record<string, number>;
+  /** Click a ward polygon to drill into it. */
+  onRegionClick: (wardNo: string) => void;
   triggerToast: (message: string) => void;
   isDark: boolean;
 }
@@ -44,7 +50,9 @@ const escalationTabs: InterventionTab[] = [
 export const ZoneView: React.FC<ZoneViewProps> = ({
   zoneName,
   onBack,
-  onDrillToWard,
+  wardRegions,
+  wardCounts,
+  onRegionClick,
   triggerToast,
   isDark,
 }) => {
@@ -98,11 +106,14 @@ export const ZoneView: React.FC<ZoneViewProps> = ({
                 onSearchChange={setSearchQuery}
                 onShowIncidentsClick={() => triggerToast("Incident details refreshed")}
                 wardTitle={`${zoneName} Zone`}
-                wardSubtitle="8 Wards  •  Population: 8.7 Lakh"
+                wardSubtitle={`${wardRegions.length} Wards  •  Click a ward to drill in`}
                 searchPlaceholder="Search Ward / Location..."
                 onBack={onBack}
-                drillButtonLabel="Open Ward 91"
-                onDrill={onDrillToWard}
+                regions={wardRegions}
+                regionCounts={wardCounts}
+                onRegionClick={onRegionClick}
+                choropleth
+                showComplaints={false}
                 className="xl:h-full"
               />
               <div className="w-full xl:w-80 shrink-0 flex flex-col gap-3 xl:h-full">

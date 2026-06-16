@@ -6,14 +6,18 @@ import {
   TileLayer,
   Marker,
   Popup,
+  GeoJSON,
   useMap,
 } from "react-leaflet";
+import type { Feature, MultiPolygon, Polygon } from "geojson";
+import type { Layer, PathOptions } from "leaflet";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/src/lib/supabase";
 import type { Tables } from "@/src/types/database.types";
 import { useTheme } from "@/components/ThemeProvider";
 import { getMapTileLayerConfig } from "@/lib/map-tiles";
+import { parseLocationToLatLng } from "@/lib/parse-location";
 
 type ComplaintRow = Tables<"complaints">;
 
@@ -44,137 +48,35 @@ function normalizeSeverityLevel(severity: string): "L1" | "L2" | "L3" | "L4" {
   return "L1";
 }
 
-function parseEwkbHexPoint(hex: string): { lat: number; lng: number } | null {
-  const normalized = hex.trim();
-  if (!/^[0-9a-fA-F]+$/.test(normalized) || normalized.length < 42) {
-    return null;
-  }
 
-  try {
-    const bytes = new Uint8Array(normalized.length / 2);
-    for (let i = 0; i < normalized.length; i += 2) {
-      bytes[i / 2] = Number.parseInt(normalized.slice(i, i + 2), 16);
-    }
-
-    const view = new DataView(bytes.buffer);
-    const littleEndian = view.getUint8(0) === 1;
-    const typeWithFlags = view.getUint32(1, littleEndian);
-    const hasSrid = (typeWithFlags & 0x20000000) !== 0;
-    const geomType = typeWithFlags & 0x000000ff;
-
-    if (geomType !== 1) {
-      return null;
-    }
-
-    const coordOffset = hasSrid ? 9 : 5;
-    if (bytes.byteLength < coordOffset + 16) {
-      return null;
-    }
-
-    const lng = view.getFloat64(coordOffset, littleEndian);
-    const lat = view.getFloat64(coordOffset + 8, littleEndian);
-
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return null;
-    }
-
-    return { lat, lng };
-  } catch {
-    return null;
-  }
-}
-
-function parseLocationToLatLng(location: unknown): { lat: number; lng: number } | null {
-  if (!location) return null;
-
-  if (typeof location === "object") {
-    const maybeObj = location as Record<string, unknown>;
-
-    const coordinates = maybeObj.coordinates;
-    if (Array.isArray(coordinates) && coordinates.length >= 2) {
-      const lng = Number(coordinates[0]);
-      const lat = Number(coordinates[1]);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        return { lat, lng };
-      }
-    }
-
-    const latVal = maybeObj.lat ?? maybeObj.latitude;
-    const lngVal = maybeObj.lng ?? maybeObj.lon ?? maybeObj.longitude;
-    if (latVal !== undefined && lngVal !== undefined) {
-      const lat = Number(latVal);
-      const lng = Number(lngVal);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        return { lat, lng };
-      }
-    }
-
-    const xVal = maybeObj.x;
-    const yVal = maybeObj.y;
-    if (xVal !== undefined && yVal !== undefined) {
-      const lng = Number(xVal);
-      const lat = Number(yVal);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        return { lat, lng };
-      }
-    }
-  }
-
-  if (typeof location === "string") {
-    const ewkb = parseEwkbHexPoint(location);
-    if (ewkb) {
-      return ewkb;
-    }
-
-    const pointMatch = location.match(/POINT\s*\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
-    if (pointMatch) {
-      const lng = Number(pointMatch[1]);
-      const lat = Number(pointMatch[2]);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        return { lat, lng };
-      }
-    }
-
-    const sridPointMatch = location.match(/SRID=\d+;\s*POINT\s*\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
-    if (sridPointMatch) {
-      const lng = Number(sridPointMatch[1]);
-      const lat = Number(sridPointMatch[2]);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        return { lat, lng };
-      }
-    }
-
-    const tupleMatch = location.match(/^\s*\(?\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)?\s*$/);
-    if (tupleMatch) {
-      const first = Number(tupleMatch[1]);
-      const second = Number(tupleMatch[2]);
-      if (Number.isFinite(first) && Number.isFinite(second)) {
-        const looksLikeLatLng = Math.abs(first) <= 90 && Math.abs(second) <= 180;
-        const lat = looksLikeLatLng ? first : second;
-        const lng = looksLikeLatLng ? second : first;
-        return { lat, lng };
-      }
-    }
-
-    try {
-      const parsed = JSON.parse(location);
-      return parseLocationToLatLng(parsed);
-    } catch {
-      return null;
-    }
-  }
-
-  return null;
-}
+type RegionFeature = Feature<Polygon | MultiPolygon>;
 
 export default function MapComponent({
   selectedComplaintId,
   recenterTrigger,
   highQuality,
+  regions,
+  regionCounts,
+  onRegionClick,
+  fitToRegionId,
+  choropleth = false,
+  showComplaints = true,
 }: {
   selectedComplaintId?: string | null;
   recenterTrigger?: number;
   highQuality?: boolean;
+  /** Polygon features to draw (zones at Delhi level, wards at zone/ward level). */
+  regions?: RegionFeature[];
+  /** regionId -> complaint count, drives choropleth fill. */
+  regionCounts?: Record<string, number>;
+  /** Click a region to drill down. */
+  onRegionClick?: (regionId: string) => void;
+  /** Pan/zoom-fit to one region id; if omitted, fits all `regions`. */
+  fitToRegionId?: string;
+  /** Color regions by density (Delhi/Zone). Default false. */
+  choropleth?: boolean;
+  /** Render the complaint marker/heatmap layer + toggle. Default true (unchanged for existing pages). */
+  showComplaints?: boolean;
 }) {
   const [complaints, setComplaints] = useState<MapComplaint[]>([]);
   const [mounted, setMounted] = useState(false);
@@ -296,14 +198,16 @@ export default function MapComponent({
 
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
-      <div className="absolute right-4 top-4 z-[1000] flex items-center gap-3 pointer-events-none">
-        <button
-          onClick={() => setShowHeatmap(!showHeatmap)}
-          className="pointer-events-auto rounded-lg bg-gray-900 px-4 py-1.5 text-sm font-medium text-white shadow-md hover:bg-gray-700 transition-colors"
-        >
-          {showHeatmap ? "Show Markers" : "Show Heatmap"}
-        </button>
-      </div>
+      {showComplaints && (
+        <div className="absolute right-4 top-4 z-[1000] flex items-center gap-3 pointer-events-none">
+          <button
+            onClick={() => setShowHeatmap(!showHeatmap)}
+            className="pointer-events-auto rounded-lg bg-gray-900 px-4 py-1.5 text-sm font-medium text-white shadow-md hover:bg-gray-700 transition-colors"
+          >
+            {showHeatmap ? "Show Markers" : "Show Heatmap"}
+          </button>
+        </div>
+      )}
 
       <MapContainer
         center={DEFAULT_CENTER}
@@ -326,7 +230,21 @@ export default function MapComponent({
           selectedComplaintId={selectedComplaintId}
         />
         <ResetToDefaultView recenterTrigger={recenterTrigger} />
-        {!showHeatmap &&
+
+        {regions && regions.length > 0 && (
+          <>
+            <RegionsLayer
+              regions={regions}
+              regionCounts={regionCounts}
+              onRegionClick={onRegionClick}
+              choropleth={choropleth}
+              isDark={theme === "dark"}
+            />
+            <FitBounds regions={regions} fitToRegionId={fitToRegionId} />
+          </>
+        )}
+
+        {showComplaints && !showHeatmap &&
           complaints.map((c) => (
             <Marker
               key={c.id}
@@ -347,7 +265,7 @@ export default function MapComponent({
             </Marker>
           ))}
 
-        {showHeatmap && <HeatmapLayer complaints={complaints} />}
+        {showComplaints && showHeatmap && <HeatmapLayer complaints={complaints} />}
       </MapContainer>
 
       {fetchError && (
@@ -455,6 +373,133 @@ function getIntensity(severity: string) {
       return 0.3;
   }
 }
+function RegionsLayer({
+  regions,
+  regionCounts,
+  onRegionClick,
+  choropleth,
+  isDark,
+}: {
+  regions: RegionFeature[];
+  regionCounts?: Record<string, number>;
+  onRegionClick?: (regionId: string) => void;
+  choropleth: boolean;
+  isDark: boolean;
+}) {
+  const max = useMemo(
+    () => Math.max(1, ...Object.values(regionCounts ?? {})),
+    [regionCounts]
+  );
+
+  // Defensive: only render features with a usable Polygon/MultiPolygon geometry
+  // so one malformed feature can never crash the GeoJSON layer.
+  const safeRegions = useMemo(
+    () =>
+      regions.filter((r) => {
+        const g = r.geometry as { type?: string; coordinates?: unknown };
+        return (
+          (g?.type === "Polygon" || g?.type === "MultiPolygon") &&
+          Array.isArray(g.coordinates) &&
+          g.coordinates.length > 0
+        );
+      }),
+    [regions]
+  );
+
+  // GeoJSON caches its `data`; bump the key so fills/handlers refresh on change.
+  const layerKey = useMemo(
+    () => safeRegions.map((r) => String(r.id)).join(",") + "|" + JSON.stringify(regionCounts ?? {}) + "|" + String(choropleth) + "|" + String(isDark),
+    [safeRegions, regionCounts, choropleth, isDark]
+  );
+
+  const data = useMemo(
+    () => ({ type: "FeatureCollection" as const, features: safeRegions }),
+    [safeRegions]
+  );
+
+  const fillFor = (id: string): string => {
+    const c = regionCounts?.[id] ?? 0;
+    if (!choropleth || c <= 0) return isDark ? "#27272a" : "#e2e8f0";
+    const t = c / max;
+    if (t > 0.75) return "#ef4444";
+    if (t > 0.5) return "#f97316";
+    if (t > 0.25) return "#eab308";
+    return "#22c55e";
+  };
+
+  const styleFor = (feature?: RegionFeature): PathOptions => {
+    const id = String(feature?.id ?? "");
+    return {
+      color: isDark ? "#52525b" : "#94a3b8",
+      weight: 1,
+      fillColor: fillFor(id),
+      fillOpacity: choropleth ? 0.55 : 0.15,
+    };
+  };
+
+  const onEachFeature = (feature: RegionFeature, layer: Layer) => {
+    const id = String(feature?.id ?? "");
+    const name =
+      (feature?.properties?.name as string) ??
+      (feature?.properties?.wardname as string) ??
+      id;
+    const count = regionCounts?.[id];
+    layer.bindTooltip(count != null ? `${name} · ${count}` : String(name), {
+      sticky: true,
+    });
+
+    if (!id || id === "unzoned" || !onRegionClick) return;
+    layer.on({
+      click: () => onRegionClick(id),
+      mouseover: (e) =>
+        (e.target as { setStyle: (s: PathOptions) => void }).setStyle({
+          weight: 2.5,
+          fillOpacity: choropleth ? 0.75 : 0.3,
+        }),
+      mouseout: (e) =>
+        (e.target as { setStyle: (s: PathOptions) => void }).setStyle(styleFor(feature)),
+    });
+  };
+
+  if (safeRegions.length === 0) return null;
+
+  return (
+    <GeoJSON
+      key={layerKey}
+      data={data as never}
+      style={styleFor as never}
+      onEachFeature={onEachFeature as never}
+    />
+  );
+}
+
+function FitBounds({
+  regions,
+  fitToRegionId,
+}: {
+  regions: RegionFeature[];
+  fitToRegionId?: string;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    const L = require("leaflet");
+    const target = fitToRegionId
+      ? regions.find((r) => String(r.id) === String(fitToRegionId))
+      : null;
+    const features = target ? [target] : regions;
+    if (!features.length) return;
+    try {
+      const bounds = L.geoJSON({ type: "FeatureCollection", features }).getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
+    } catch {
+      /* ignore fit errors */
+    }
+  }, [regions, fitToRegionId, map]);
+
+  return null;
+}
+
 function ZoomToComplaint({
   complaints,
   selectedComplaintId,
