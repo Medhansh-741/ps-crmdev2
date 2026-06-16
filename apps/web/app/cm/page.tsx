@@ -11,9 +11,9 @@ import { DelhiOverviewView } from "./_components/views/DelhiOverviewView";
 import { ZoneView } from "./_components/views/ZoneView";
 import { WardView } from "./_components/views/WardView";
 import {
+  usePrecomputedZoneRegions,
   useWardGeoJSON,
   useComplaintPoints,
-  buildZoneRegions,
   wardRegionsForZone,
   wardByNo,
   countPointsInRegions,
@@ -45,11 +45,11 @@ export default function CMCommandCenterPage() {
 
   const viewRef = useRef<HTMLDivElement>(null);
 
-  // Real geographic data (ward polygons + complaint points)
-  const { wards } = useWardGeoJSON();
+  // Real geographic data (precomputed zones, lazy loaded wards + complaint points)
+  const { zoneRegions } = usePrecomputedZoneRegions();
+  const { wards } = useWardGeoJSON(view !== "delhi");
   const { points } = useComplaintPoints();
 
-  const zoneRegions = useMemo(() => buildZoneRegions(wards), [wards]);
   const zoneCounts = useMemo(
     () => countPointsInRegions(zoneRegions, points),
     [zoneRegions, points]

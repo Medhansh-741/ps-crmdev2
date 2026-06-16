@@ -28,10 +28,15 @@ type MapComplaint = {
   severity: string;
   lat: number;
   lng: number;
+  sla_breached?: boolean;
+  assigned_department?: string | null;
 };
 
 const DEFAULT_CENTER: [number, number] = [28.6139, 77.209];
 const DEFAULT_ZOOM = 12;
+
+// Module-level Leaflet import promise to trigger parallel fetching before component mounts
+const leafletPromise = typeof window !== "undefined" ? import("leaflet") : null;
 
 const SEVERITY_COLOR: Record<string, string> = {
   L1: "#38bdf8",
@@ -61,6 +66,8 @@ export default function MapComponent({
   fitToRegionId,
   choropleth = false,
   showComplaints = true,
+  activeLayer = "density",
+  intensity = 70,
 }: {
   selectedComplaintId?: string | null;
   recenterTrigger?: number;
@@ -77,6 +84,8 @@ export default function MapComponent({
   choropleth?: boolean;
   /** Render the complaint marker/heatmap layer + toggle. Default true (unchanged for existing pages). */
   showComplaints?: boolean;
+  activeLayer?: string;
+  intensity?: number;
 }) {
   const [complaints, setComplaints] = useState<MapComplaint[]>([]);
   const [mounted, setMounted] = useState(false);
@@ -87,12 +96,45 @@ export default function MapComponent({
   const { theme } = useTheme();
   const tileConfig = getMapTileLayerConfig({ theme, highQuality });
 
+  const filteredComplaints = useMemo(() => {
+    if (!activeLayer || activeLayer === "density") return complaints;
+    return complaints.filter((c) => {
+      const title = (c.title ?? "").toLowerCase();
+      const desc = (c.description ?? "").toLowerCase();
+      const dept = (c.assigned_department ?? "").toLowerCase();
+      const sev = normalizeSeverityLevel(c.severity);
+
+      if (activeLayer === "critical") {
+        return sev === "L4";
+      }
+      if (activeLayer === "sla") {
+        return !!c.sla_breached;
+      }
+      if (activeLayer === "garbage") {
+        return title.includes("garbage") || title.includes("dump") || desc.includes("garbage") || desc.includes("dump") || dept === "mcd";
+      }
+      if (activeLayer === "roads") {
+        return title.includes("road") || title.includes("pothole") || desc.includes("road") || desc.includes("pothole") || dept === "pwd";
+      }
+      if (activeLayer === "water") {
+        return title.includes("water") || title.includes("sewage") || title.includes("leak") || title.includes("drain") || desc.includes("water") || desc.includes("sewage") || desc.includes("leak") || desc.includes("drain") || dept === "djb";
+      }
+      if (activeLayer === "streetlights") {
+        return title.includes("light") || title.includes("electricity") || desc.includes("light") || desc.includes("electricity");
+      }
+      if (activeLayer === "cctv") {
+        return title.includes("cctv") || title.includes("camera") || title.includes("detect") || desc.includes("cctv") || desc.includes("camera") || desc.includes("detect");
+      }
+      return true;
+    });
+  }, [complaints, activeLayer]);
+
   // Fetch complaints from Supabase
   async function fetchComplaints() {
     try {
       const { data, error } = await supabase
         .from("complaints")
-        .select("id, title, description, location, severity, effective_severity");
+        .select("id, title, description, location, severity, effective_severity, sla_breached, assigned_department");
 
       if (error) {
         setFetchError(error.message || "Unable to fetch complaints.");
@@ -121,6 +163,8 @@ export default function MapComponent({
             severity: c.effective_severity || c.severity,
             lat: parsed.lat,
             lng: parsed.lng,
+            sla_breached: c.sla_breached,
+            assigned_department: c.assigned_department,
           };
         })
         .filter(Boolean) as MapComplaint[];
@@ -136,20 +180,22 @@ export default function MapComponent({
 
   useEffect(() => {
     setMounted(true);
-    import("leaflet").then((L) => {
-      delete (L.Icon.Default.prototype as any)._getIconUrl;
+    if (leafletPromise) {
+      leafletPromise.then((L) => {
+        delete (L.Icon.Default.prototype as any)._getIconUrl;
 
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl:
-          "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-        iconUrl:
-          "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-        shadowUrl:
-          "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+        L.Icon.Default.mergeOptions({
+          iconRetinaUrl:
+            "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+          iconUrl:
+            "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+          shadowUrl:
+            "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+        });
+
+        setLeaflet(L);
       });
-
-      setLeaflet(L);
-    });
+    }
 
     fetchComplaints();
 
@@ -226,7 +272,7 @@ export default function MapComponent({
           subdomains={tileConfig.subdomains}
         />
         <ZoomToComplaint
-          complaints={complaints}
+          complaints={filteredComplaints}
           selectedComplaintId={selectedComplaintId}
         />
         <ResetToDefaultView recenterTrigger={recenterTrigger} />
@@ -245,7 +291,7 @@ export default function MapComponent({
         )}
 
         {showComplaints && !showHeatmap &&
-          complaints.map((c) => (
+          filteredComplaints.map((c) => (
             <Marker
               key={c.id}
               position={[c.lat, c.lng]}
@@ -265,7 +311,7 @@ export default function MapComponent({
             </Marker>
           ))}
 
-        {showComplaints && showHeatmap && <HeatmapLayer complaints={complaints} />}
+        {showComplaints && showHeatmap && <HeatmapLayer complaints={filteredComplaints} intensity={intensity} />}
       </MapContainer>
 
       {fetchError && (
@@ -320,7 +366,7 @@ function ResetToDefaultView({ recenterTrigger }: { recenterTrigger?: number }) {
   return null;
 }
 
-function HeatmapLayer({ complaints }: { complaints: any[] }) {
+function HeatmapLayer({ complaints, intensity = 70 }: { complaints: any[]; intensity?: number }) {
   const map = useMap();
 
   useEffect(() => {
@@ -330,6 +376,10 @@ function HeatmapLayer({ complaints }: { complaints: any[] }) {
     }
     require("leaflet.heat");
 
+    // Scale intensity (10-100) to adjust heatmap radius and blur
+    const radius = Math.round(10 + (intensity / 100) * 25);
+    const blur = Math.round(10 + (intensity / 100) * 15);
+
     const heatLayer = (L as any).heatLayer(
       complaints.map((c: any) => [
         c.lat,
@@ -337,8 +387,8 @@ function HeatmapLayer({ complaints }: { complaints: any[] }) {
         getIntensity(c.severity),
       ]),
       {
-        radius: 25,
-        blur: 20,
+        radius: radius,
+        blur: blur,
         minOpacity: 0.35,
         gradient: {
           0.2: "#22c55e",
@@ -354,7 +404,7 @@ function HeatmapLayer({ complaints }: { complaints: any[] }) {
     return () => {
       map.removeLayer(heatLayer);
     };
-  }, [complaints, map]);
+  }, [complaints, map, intensity]);
 
   return null;
 }

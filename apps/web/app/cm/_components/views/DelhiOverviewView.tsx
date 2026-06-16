@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 
 import { KPIStatsRow } from "../KPIStatsRow";
-import { MapLayersPanel } from "../MapLayersPanel";
 import { MapSection } from "../MapSection";
 import { ActiveInterventionsPanel } from "../ActiveInterventionsPanel";
 import { DelhiHealthScoreBar } from "../DelhiHealthScoreBar";
@@ -49,14 +48,6 @@ export const DelhiOverviewView: React.FC<DelhiOverviewViewProps> = ({
         <KPIStatsRow kpis={delhiKpis} onCardClick={(id) => triggerToast(`Navigating to details for KPI card: ${id}`)} />
 
         <div className="flex flex-col xl:flex-row gap-3">
-          <MapLayersPanel
-            activeLayer={activeLayer}
-            onLayerChange={setActiveLayer}
-            intensity={intensity}
-            onIntensityChange={setIntensity}
-            className="xl:h-[560px]"
-          />
-
           <div className="flex-1 flex flex-col min-h-[450px] xl:h-[560px]">
             <MapSection
               searchQuery={searchQuery}
@@ -71,6 +62,10 @@ export const DelhiOverviewView: React.FC<DelhiOverviewViewProps> = ({
               choropleth
               showComplaints={false}
               className="xl:h-full"
+              activeLayer={activeLayer}
+              onLayerChange={setActiveLayer}
+              intensity={intensity}
+              onIntensityChange={setIntensity}
             />
           </div>
 

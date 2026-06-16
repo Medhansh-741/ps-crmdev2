@@ -11,10 +11,30 @@ gsap.registerPlugin(useGSAP);
 const MapComponent = dynamic(() => import("@/components/MapComponent"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full w-full items-center justify-center bg-gray-50 text-sm text-gray-500 dark:bg-[#1a1a1a] dark:text-gray-400">
-      <div className="flex flex-col items-center gap-3">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
-        <span>Initializing Command Map...</span>
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-slate-50 dark:bg-zinc-950">
+      {/* Premium Map Grid Skeleton Background */}
+      <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none" 
+        style={{
+          backgroundImage: `
+            linear-gradient(to right, currentColor 1px, transparent 1px),
+            linear-gradient(to bottom, currentColor 1px, transparent 1px)
+          `,
+          backgroundSize: '24px 24px'
+        }}
+      />
+      {/* Radial fade for map focus effect */}
+      <div className="absolute inset-0 bg-gradient-to-t from-slate-100/50 via-transparent to-slate-100/50 dark:from-zinc-900/50 dark:to-zinc-900/50 pointer-events-none" />
+      
+      {/* Floating loading card with premium styling */}
+      <div className="relative z-10 flex flex-col items-center gap-3.5 rounded-xl border border-slate-200/80 bg-white/85 p-6 shadow-xl backdrop-blur-md dark:border-zinc-800/80 dark:bg-zinc-900/85 animate-pulse max-w-xs text-center">
+        <div className="relative flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
+          <div className="absolute inset-0 animate-ping rounded-lg bg-emerald-500/20" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+        </div>
+        <div>
+          <h4 className="text-xs font-bold tracking-wider text-slate-800 dark:text-white uppercase">COMMAND MAP</h4>
+          <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-semibold mt-1">Acquiring secure satellite link & telemetry...</p>
+        </div>
       </div>
     </div>
   ),
@@ -22,6 +42,7 @@ const MapComponent = dynamic(() => import("@/components/MapComponent"), {
 
 import { cn } from "@/src/lib/utils";
 import type { Feature, MultiPolygon, Polygon } from "geojson";
+import { MapLayersPanel } from "./MapLayersPanel";
 
 type RegionFeature = Feature<Polygon | MultiPolygon>;
 
@@ -46,6 +67,12 @@ export interface MapSectionProps {
   /** Show the complaint marker/heatmap layer (ward level). Default true. */
   showComplaints?: boolean;
   className?: string;
+
+  // Integrated map layers panel props
+  activeLayer?: string;
+  onLayerChange?: (layerId: string) => void;
+  intensity?: number;
+  onIntensityChange?: (intensity: number) => void;
 }
 
 export const MapSection: React.FC<MapSectionProps> = ({
@@ -65,6 +92,10 @@ export const MapSection: React.FC<MapSectionProps> = ({
   choropleth,
   showComplaints,
   className,
+  activeLayer,
+  onLayerChange,
+  intensity,
+  onIntensityChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -126,7 +157,22 @@ export const MapSection: React.FC<MapSectionProps> = ({
           fitToRegionId={fitToRegionId}
           choropleth={choropleth}
           showComplaints={showComplaints}
+          activeLayer={activeLayer}
+          intensity={intensity}
         />
+
+        {activeLayer !== undefined && onLayerChange && intensity !== undefined && onIntensityChange && (
+          <div className="absolute left-4 top-4 z-[1000] pointer-events-none hidden lg:flex">
+            <MapLayersPanel
+              activeLayer={activeLayer}
+              onLayerChange={onLayerChange}
+              intensity={intensity}
+              onIntensityChange={onIntensityChange}
+              variant="floating"
+            />
+          </div>
+        )}
+
         <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end gap-1.5 shadow-sm">
           {drillButtonLabel && onDrill && (
             <button

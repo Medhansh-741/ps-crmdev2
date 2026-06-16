@@ -35,49 +35,76 @@ export type ZoneFeature = Feature<Polygon | MultiPolygon, ZoneProps>;
 
 export type GeoStatus = "loading" | "ready" | "empty" | "error";
 
-/** Fetch all ward polygons once, tagging each with its derived zone. */
-export function useWardGeoJSON(): { wards: WardFeature[]; status: GeoStatus } {
-  const [wards, setWards] = useState<WardFeature[]>([]);
+/** Fetch precomputed zone boundaries directly from the local static GeoJSON. */
+export function usePrecomputedZoneRegions(): { zoneRegions: ZoneFeature[]; status: GeoStatus } {
+  const [zoneRegions, setZoneRegions] = useState<ZoneFeature[]>([]);
   const [status, setStatus] = useState<GeoStatus>("loading");
 
   useEffect(() => {
     let alive = true;
     (async () => {
-      const { data, error } = await supabase
-        .from("ward_geojson")
-        .select("ward_no,wardname,ac_name,totalpop,geometry")
-        // Deterministic order so the turf union below is stable run-to-run.
-        .order("ward_no", { ascending: true });
-      if (!alive) return;
-      if (error) {
-        setStatus("error");
-        return;
+      try {
+        const res = await fetch("/delhi_zones.geojson");
+        if (!res.ok) throw new Error("Failed to fetch zones GeoJSON");
+        const data = await res.json();
+        if (!alive) return;
+        setZoneRegions(data.features || []);
+        setStatus("ready");
+      } catch (err) {
+        console.error("Error loading zones GeoJSON:", err);
+        if (alive) setStatus("error");
       }
-      if (!data || data.length === 0) {
-        setStatus("empty");
-        return;
-      }
-      const feats: WardFeature[] = data
-        .filter((r) => r.geometry)
-        .map((r) => ({
-          type: "Feature",
-          id: r.ward_no ?? undefined,
-          geometry: r.geometry as unknown as Polygon | MultiPolygon,
-          properties: {
-            ward_no: r.ward_no ?? -1,
-            wardname: r.wardname ?? "",
-            ac_name: r.ac_name,
-            totalpop: r.totalpop,
-            zoneId: zoneIdForAc(r.ac_name),
-          },
-        }));
-      setWards(feats);
-      setStatus(feats.length ? "ready" : "empty");
     })();
     return () => {
       alive = false;
     };
   }, []);
+
+  return { zoneRegions, status };
+}
+
+/** Fetch all ward polygons from the local static GeoJSON, tagging each with its derived zone. */
+export function useWardGeoJSON(enabled: boolean = true): { wards: WardFeature[]; status: GeoStatus } {
+  const [wards, setWards] = useState<WardFeature[]>([]);
+  const [status, setStatus] = useState<GeoStatus>("loading");
+
+  useEffect(() => {
+    if (!enabled) {
+      // Defer loading when disabled
+      return;
+    }
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch("/delhi_wards.geojson");
+        if (!res.ok) throw new Error("Failed to fetch wards GeoJSON");
+        const data = await res.json();
+        if (!alive) return;
+        const feats: WardFeature[] = (data.features || [])
+          .filter((f: any) => f.geometry)
+          .map((f: any) => ({
+            type: "Feature",
+            id: f.properties.Ward_No ?? undefined,
+            geometry: f.geometry,
+            properties: {
+              ward_no: f.properties.Ward_No ?? -1,
+              wardname: f.properties.WardName ?? "",
+              ac_name: f.properties.AC_Name ?? null,
+              totalpop: f.properties.TotalPop ?? null,
+              zoneId: zoneIdForAc(f.properties.AC_Name),
+            },
+          }));
+        setWards(feats);
+        setStatus(feats.length ? "ready" : "empty");
+      } catch (err) {
+        console.error("Error loading wards GeoJSON:", err);
+        if (alive) setStatus("error");
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [enabled]);
 
   return { wards, status };
 }

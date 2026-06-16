@@ -3,7 +3,6 @@
 import React, { useState, useMemo } from "react";
 
 import { KPIStatsRow } from "../KPIStatsRow";
-import { MapLayersPanel } from "../MapLayersPanel";
 import { MapSection } from "../MapSection";
 import { AIInsightsPanel } from "../AIInsightsPanel";
 import { DepartmentPerformanceTable } from "../DepartmentPerformanceTable";
@@ -91,14 +90,6 @@ export const ZoneView: React.FC<ZoneViewProps> = ({
         <KPIStatsRow kpis={zoneKpis} onCardClick={(id) => triggerToast(`Navigating to details for KPI card: ${id}`)} />
 
         <div className="flex flex-col xl:flex-row gap-3">
-          <MapLayersPanel
-            activeLayer={activeLayer}
-            onLayerChange={setActiveLayer}
-            intensity={intensity}
-            onIntensityChange={setIntensity}
-            className="xl:h-[760px]"
-          />
-
           <div className="flex-1 flex flex-col gap-3">
             <div className="flex flex-col xl:flex-row gap-3 xl:h-[450px] shrink-0">
               <MapSection
@@ -115,6 +106,10 @@ export const ZoneView: React.FC<ZoneViewProps> = ({
                 choropleth
                 showComplaints={false}
                 className="xl:h-full"
+                activeLayer={activeLayer}
+                onLayerChange={setActiveLayer}
+                intensity={intensity}
+                onIntensityChange={setIntensity}
               />
               <div className="w-full xl:w-80 shrink-0 flex flex-col gap-3 xl:h-full">
                 <AIInsightsPanel insights={zoneInsights} />

@@ -40,6 +40,7 @@ export interface MapLayersPanelProps {
   layers?: MapLayerItem[];
   legendItems?: SeverityLegendItem[];
   className?: string;
+  variant?: "sidebar" | "floating";
 }
 
 const iconMap: Record<MapLayerItem["iconName"], LucideIcon> = {
@@ -54,21 +55,22 @@ const iconMap: Record<MapLayerItem["iconName"], LucideIcon> = {
 };
 
 const defaultLayers: MapLayerItem[] = [
-  { id: "density", label: "Complaint Density", iconName: "flame", colorClass: "text-red-500" },
+  { id: "density", label: "Complaint Density", iconName: "flame", colorClass: "text-emerald-600 dark:text-emerald-400" },
   { id: "critical", label: "Critical Issues", iconName: "critical", colorClass: "text-red-500" },
   { id: "sla", label: "SLA Breaches", iconName: "sla", colorClass: "text-amber-500" },
-  { id: "garbage", label: "Garbage Hotspots", iconName: "garbage", colorClass: "text-emerald-500" },
-  { id: "roads", label: "Road & Potholes", iconName: "roads", colorClass: "text-indigo-500" },
-  { id: "water", label: "Water Leakages", iconName: "water", colorClass: "text-blue-500" },
-  { id: "streetlights", label: "Streetlights Out", iconName: "streetlights", colorClass: "text-amber-400" },
-  { id: "cctv", label: "CCTV AI Detections", iconName: "cctv", colorClass: "text-cyan-500" },
+  { id: "garbage", label: "Garbage", iconName: "garbage", colorClass: "text-emerald-500" },
+  { id: "roads", label: "Roads", iconName: "roads", colorClass: "text-indigo-500" },
+  { id: "water", label: "Water", iconName: "water", colorClass: "text-blue-500" },
+  { id: "streetlights", label: "Streetlights", iconName: "streetlights", colorClass: "text-amber-400" },
+  { id: "cctv", label: "CCTV Detections", iconName: "cctv", colorClass: "text-cyan-500" },
 ];
 
 const defaultLegend: SeverityLegendItem[] = [
-  { label: "Very High / Critical", colorClass: "bg-red-600" },
-  { label: "High Priority", colorClass: "bg-orange-500" },
-  { label: "Medium Priority", colorClass: "bg-amber-400" },
-  { label: "Low Priority", colorClass: "bg-emerald-500" },
+  { label: "Very High", colorClass: "bg-[#b91c1c]" },
+  { label: "High", colorClass: "bg-[#ea580c]" },
+  { label: "Medium", colorClass: "bg-[#eab308]" },
+  { label: "Low", colorClass: "bg-[#22c55e]" },
+  { label: "Very Low", colorClass: "bg-[#0d9488]" },
 ];
 
 export const MapLayersPanel: React.FC<MapLayersPanelProps> = ({
@@ -79,6 +81,7 @@ export const MapLayersPanel: React.FC<MapLayersPanelProps> = ({
   layers = defaultLayers,
   legendItems = defaultLegend,
   className,
+  variant = "sidebar",
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -92,6 +95,94 @@ export const MapLayersPanel: React.FC<MapLayersPanelProps> = ({
     },
     { scope: panelRef }
   );
+
+  if (variant === "floating") {
+    return (
+      <aside
+        ref={panelRef}
+        className={cn(
+          "opacity-0 select-none flex flex-col gap-2 w-56 pointer-events-none",
+          className
+        )}
+      >
+        {/* Map Layers Section */}
+        <div className="rounded-xl border border-slate-200/80 bg-white/95 dark:border-zinc-800/80 dark:bg-zinc-900/95 p-2.5 shadow-lg backdrop-blur-md pointer-events-auto">
+          <h3 className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-zinc-500 uppercase flex items-center gap-2 mb-2">
+            <Layers size={12} /> MAP LAYERS
+          </h3>
+          <ul className="space-y-1">
+            {layers.map((layer) => {
+              const IconComponent = iconMap[layer.iconName];
+              const isSelected = activeLayer === layer.id;
+
+              return (
+                <li
+                  key={layer.id}
+                  onClick={() => onLayerChange(layer.id)}
+                  className={`flex items-center justify-between rounded-lg px-2 py-1 text-xs font-semibold cursor-pointer transition-all ${
+                    isSelected
+                      ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-400 font-bold"
+                      : "text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {IconComponent && <IconComponent size={14} className={layer.colorClass} />}
+                    <span>{layer.label}</span>
+                  </div>
+                  <input
+                    type="radio"
+                    name="map_layer_group"
+                    checked={isSelected}
+                    onChange={() => onLayerChange(layer.id)}
+                    className="h-3 w-3 accent-emerald-600 cursor-pointer"
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        {/* Legend & Slider Section */}
+        <div className="rounded-xl border border-slate-200/80 bg-white/95 dark:border-zinc-800/80 dark:bg-zinc-900/95 p-2.5 shadow-lg backdrop-blur-md pointer-events-auto">
+          {/* Legend Section */}
+          <div>
+            <h3 className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-zinc-500 uppercase mb-1.5">
+              SEVERITY LEGEND
+            </h3>
+            <ul className="space-y-1">
+              {legendItems.map((item, idx) => (
+                <li key={idx} className="flex items-center gap-2 text-xs text-slate-600 dark:text-zinc-400">
+                  <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${item.colorClass}`}></span>
+                  <span className="font-semibold text-[11px] truncate">{item.label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="border-t border-slate-100 dark:border-zinc-800/50 my-2" />
+
+          {/* Slider Section */}
+          <div>
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 mb-1 uppercase">
+              Heatmap Intensity
+            </h4>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-[10px] text-slate-400 font-bold">-</span>
+              <input
+                type="range"
+                min="10"
+                max="100"
+                value={intensity}
+                onChange={(e) => onIntensityChange(Number(e.target.value))}
+                className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600 dark:bg-zinc-800"
+              />
+              <span className="text-[10px] text-slate-400 font-bold">+</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside
