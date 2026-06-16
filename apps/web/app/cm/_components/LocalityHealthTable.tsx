@@ -13,12 +13,21 @@ export interface LocalityHealthTableProps {
   localities: LocalityHealth[];
   onViewAnalyticsClick?: () => void;
   className?: string;
+  /** Card header label. Defaults to "LOCALITY HEALTH OVERVIEW". */
+  title?: string;
+  /** Header for the first column. Defaults to "Locality". */
+  rowLabel?: string;
+  /** Link text for the footer action. Defaults to "View Locality Analytics". */
+  actionLabel?: string;
 }
 
 export const LocalityHealthTable: React.FC<LocalityHealthTableProps> = ({
   localities,
   onViewAnalyticsClick,
   className,
+  title = "LOCALITY HEALTH OVERVIEW",
+  rowLabel = "Locality",
+  actionLabel = "View Locality Analytics",
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -40,13 +49,13 @@ export const LocalityHealthTable: React.FC<LocalityHealthTableProps> = ({
       className={cn("bg-white rounded-xl border border-slate-200 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 flex flex-col h-60 min-h-0 select-none", className)}
     >
       <h3 className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-zinc-500 uppercase mb-2 shrink-0">
-        LOCALITY HEALTH OVERVIEW
+        {title}
       </h3>
       <div className="flex-1 overflow-y-auto">
         <table className="w-full text-left text-[11px]">
           <thead>
             <tr className="text-slate-400 border-b border-slate-100 dark:border-zinc-800">
-              <th className="pb-1.5 font-bold">Locality</th>
+              <th className="pb-1.5 font-bold">{rowLabel}</th>
               <th className="pb-1.5 font-bold text-center">Complaints</th>
               <th className="pb-1.5 font-bold text-right">Severity</th>
             </tr>
@@ -80,7 +89,7 @@ export const LocalityHealthTable: React.FC<LocalityHealthTableProps> = ({
               onViewAnalyticsClick();
             }}
           >
-            View Locality Analytics
+            {actionLabel}
           </a>
         </div>
       )}

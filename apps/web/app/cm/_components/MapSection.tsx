@@ -2,7 +2,7 @@
 
 import React, { useRef } from "react";
 import dynamic from "next/dynamic";
-import { Search, List } from "lucide-react";
+import { Search, List, ArrowLeft, ArrowRight } from "lucide-react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 
@@ -28,6 +28,12 @@ export interface MapSectionProps {
   onShowIncidentsClick?: () => void;
   wardTitle?: string;
   wardSubtitle?: string;
+  searchPlaceholder?: string;
+  /** When set, renders a back arrow before the title (drill-up). */
+  onBack?: () => void;
+  /** When set, renders a primary "drill-down" button over the map. */
+  drillButtonLabel?: string;
+  onDrill?: () => void;
   className?: string;
 }
 
@@ -37,6 +43,10 @@ export const MapSection: React.FC<MapSectionProps> = ({
   onShowIncidentsClick,
   wardTitle = "Ward 11 - Najafgarh (Delhi)",
   wardSubtitle = "South West Zone  |  Population: 2.13 Lakh  |  Households: 38,542",
+  searchPlaceholder = "Search location in Ward...",
+  onBack,
+  drillButtonLabel,
+  onDrill,
   className,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -59,18 +69,29 @@ export const MapSection: React.FC<MapSectionProps> = ({
     >
       {/* Map Header */}
       <div className="p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm z-10 sticky top-0">
-        <div>
-          <h2 className="text-sm sm:text-base font-bold text-slate-800 dark:text-white leading-tight">
-            {wardTitle}
-          </h2>
-          <p className="text-[10px] font-medium text-slate-400 dark:text-zinc-500 mt-0.5">
-            {wardSubtitle}
-          </p>
+        <div className="flex items-center gap-2.5">
+          {onBack && (
+            <button
+              onClick={onBack}
+              aria-label="Go back"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition-colors dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            >
+              <ArrowLeft size={15} />
+            </button>
+          )}
+          <div>
+            <h2 className="text-sm sm:text-base font-bold text-slate-800 dark:text-white leading-tight">
+              {wardTitle}
+            </h2>
+            <p className="text-[10px] font-medium text-slate-400 dark:text-zinc-500 mt-0.5">
+              {wardSubtitle}
+            </p>
+          </div>
         </div>
         <div className="relative w-full sm:w-auto shrink-0">
           <input
             type="text"
-            placeholder="Search location in Ward..."
+            placeholder={searchPlaceholder}
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pl-8 pr-4 py-1 border border-slate-200 rounded-md text-xs w-full sm:w-48 bg-slate-50 focus:ring-1 focus:ring-emerald-500 focus:bg-white transition-all dark:border-zinc-800 dark:bg-zinc-800 dark:focus:bg-zinc-900"
@@ -82,7 +103,16 @@ export const MapSection: React.FC<MapSectionProps> = ({
       {/* Leaflet Map Component Container */}
       <div className="flex-1 w-full relative z-0">
         <MapComponent />
-        <div className="absolute bottom-4 right-4 z-[1000] flex flex-col gap-1.5 shadow-sm">
+        <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end gap-1.5 shadow-sm">
+          {drillButtonLabel && onDrill && (
+            <button
+              onClick={onDrill}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95 animate-pulse"
+            >
+              <span>{drillButtonLabel}</span>
+              <ArrowRight size={13} />
+            </button>
+          )}
           <button
             onClick={onShowIncidentsClick}
             className="flex items-center gap-1 bg-white hover:bg-slate-50 text-slate-700 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 shadow-md transition-all active:scale-95"
