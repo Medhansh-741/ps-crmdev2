@@ -34,7 +34,7 @@
 1. [Problem Statement](#-problem-statement)
 2. [Why JanSamadhan is Different](#-why-jansamadhan-is-different)
 3. [April 2026 Feature Update](#-april-2026-feature-update)
-4. [The 4 Major Portals](#-the-4-major-portals)
+4. [The 5 Major Portals & Command Center](#-the-5-major-portals--command-center)
 5. [Setup Guide](#-setup-guide)
 6. [How To Start (Local Runtime)](#-how-to-start-local-runtime)
 7. [Citizen Flow — Filing a Complaint](#-citizen-flow--filing-a-complaint)
@@ -42,17 +42,19 @@
    - [Manual Submission (Secondary Path)](#-manual-submission-secondary-path)
    - [Location Pin & DIGIPIN](#-location-pin--digipin)
    - [How a Ticket is Generated](#-how-a-ticket-is-generated)
-8. [Complaint Categories (42+ across 9 Delhi Zones)](#-complaint-categories-42-across-9-delhi-zones)
-9. [Department Mapping (Category to Authority)](#-department-mapping-category-to-authority)
-10. [Authority Flow](#-authority-flow--department-scoped-no-overlap)
-11. [Worker Flow](#-worker-flow)
-12. [Admin Flow](#️-admin-flow)
-13. [SLA & Escalation Engine](#-sla--escalation-engine)
-14. [Application Architecture](#️-application-architecture)
-15. [API Reference](#-api-reference)
-16. [Security Design](#-security-design)
-17. [Compatibility](#-compatibility)
-18. [Roadmap](#-roadmap)
+8. [WhatsApp Bot Integration (Multilingual Civic Assistant)](#-whatsapp-bot-integration-multilingual-civic-assistant)
+9. [Complaint Categories (42+ across 9 Delhi Zones)](#-complaint-categories-42-across-9-delhi-zones)
+10. [Department Mapping (Category to Authority)](#-department-mapping-category-to-authority)
+11. [Authority Flow](#-authority-flow--department-scoped-no-overlap)
+12. [Worker Flow](#-worker-flow)
+13. [Admin Flow](#️-admin-flow)
+14. [SLA & Escalation Engine](#-sla--escalation-engine)
+15. [2022 Delhi Ward-Wise Spatial Data (PostGIS)](#-2022-delhi-ward-wise-spatial-data-postgis)
+16. [Application Architecture](#️-application-architecture)
+17. [API Reference](#-api-reference)
+18. [Security Design](#-security-design)
+19. [Compatibility](#-compatibility)
+20. [Roadmap](#-roadmap)
 
 ---
 
@@ -159,7 +161,7 @@ Thanks to serverless optimization, containerized portability, and the model's ne
 
 ---
 
-## 🖥️ The 4 Major Portals
+## 🖥️ The 5 Major Portals & Command Center
 
 ### Portal Access Credentials
 
@@ -169,6 +171,7 @@ Thanks to serverless optimization, containerized portability, and the model's ne
 | 🏛️ **Authority** | `/authority` | `authority@gmail.com` | `Test1234!` | Email + Password login + Sign in with Google|
 | 👷 **Worker** | `/worker` | `prakharwork@gmail.com` | `Test1234!` | Email + Password login + Sign in with Google|
 | ⚙️ **Admin** | `/admin` | `hackathondb@gmail.com` | `Test1234!` | Email + Password login + Sign in with Google|
+| 👑 **Chief Minister** | `/cm` | *Public / Closed loop* | — | Directly monitor city and regional health score performance |
 
 > **Note:** Citizens can also sign up manually by clicking "Sign Up", filling the form, and selecting the **Citizen** radio button to assign their role. Admin can invite new Authority and Worker accounts directly from the Admin Dashboard.
 
@@ -187,6 +190,9 @@ A mobile-optimised field interface. Workers see only their assigned complaints. 
 
 #### ⚙️ Admin Panel
 Full platform control. Admins can view all complaints across all departments, manage the spatial map view, assign workers, invite new Authority/Worker accounts, view SLA breach reports, and generate AI-powered analytics summaries.
+
+#### 👑 Chief Minister's Command Center (`/cm`)
+A high-level command center for the Chief Minister and city executives. Features live health score calculations for the city, administrative zones, and individual wards. Executives can track performance indicators, drill down into regional complaint densities, check active workforce statuses, filter issues dynamically, and view active interventions.
 
 ---
 
@@ -487,6 +493,22 @@ The ticket ID sequence is guaranteed unique via a PostgreSQL `SEQUENCE` — no r
 
 ---
 
+## 💬 WhatsApp Bot Integration (Multilingual Civic Assistant)
+
+JanSamadhan includes a fully-featured, production-ready WhatsApp Chatbot that acts as a conversational ingress channel for citizens. Integrated directly with the Meta Cloud API and backed by our FastAPI service and Redis session management, it simplifies civic reporting.
+
+### 🌟 Key Capabilities
+- **Multilingual Support**: Supports 10 regional Indian languages (English, Hindi, Tamil, Telugu, Kannada, Malayalam, Bengali, Marathi, Gujarati, Punjabi). Language selection is handled dynamically via WhatsApp Interactive List Messages.
+- **Conversational Intake (Powered by Gemini)**: Citizens can describe the problem in natural language (Hindi or English text). Gemini's agentic flow automatically identifies the category, appropriate severity level, and responsible authority.
+- **Image-First Flow & Content Safety**: Citizens upload a photo of the issue first. The chatbot runs content moderation checks and classification on the photo, then matches the photo with the subsequent description.
+- **Native Location Sharing**: The bot prompts citizens using WhatsApp's native location-sharing UI. The latitude/longitude coordinate pair is geocoded to an address, validated to ensure it lies within India, and checked for active duplicates.
+- **PostGIS Proximity Duplicate Suppression**: Prior to ticket creation, the bot scans a 20-meter radius for existing complaints. If a match is found, the user is given options to **Upvote** the existing ticket (escalating its urgency) or **Submit Anyway**.
+- **Bidirectional Account Linking**: Users can link their WhatsApp number to their JanSamadhan web profile using a portal-generated link code (`link-<CODE>`). Once linked, all WhatsApp submissions sync automatically with their online dashboard.
+- **Status Inquiry**: Citizens can check the progress of their complaints directly inside WhatsApp at any time (e.g., sending `status DL-2026-00042` or using the "Recent Tickets" list menu).
+- **Outbound Closure Alerts**: Field worker completion events automatically trigger outbound WhatsApp notifications to citizens, seeking closure verification.
+
+---
+
 ## 🗂️ Complaint Categories (42+ across 9 Delhi Zones)
 
 JanSamadhan covers **42+ complaint types** spanning **9 Delhi jurisdiction bodies**: DMRC, NHAI, PWD, MCD, NDMC, DJB, DISCOM, Delhi Police, Forest Dept, and DPCC.
@@ -708,6 +730,34 @@ stateDiagram-v2
 
 ---
 
+## 🗺️ 2022 Delhi Ward-Wise Spatial Data (PostGIS)
+
+For high-granularity spatial analysis, JanSamadhan leverages the official **2022 Delhi Ward Delimitation Boundary Dataset** containing **250 unified municipal wards** mapped to the **12 administrative MCD zones**:
+
+```
+250 Wards (Unified Delhi 2022) ──> Grouped into ──> 12 MCD Administrative Zones
+                                                      (e.g., Rohini, Civil Lines, South, etc.)
+```
+
+### ⚙️ Database & PostGIS Integration
+- **PostGIS Geometries**: Wards are stored in the `spatial_wards` table as GIS polygon/multipolygon geometries (`geom`) using standard coordinate references.
+- **Database Views**: The `ward_geojson` view formats these geometries into standard GeoJSON structures for consumption by frontend applications.
+- **Ward-Level Metadata**: Each ward row includes:
+  - Assembly Constituency (AC) code and name (e.g., `ac_name`)
+  - Total Ward Population statistics (e.g., `totalpop`)
+  - SC Population statistics (e.g., `sc_pop`)
+  - Zone mapping relationships (mapping ward numbers to one of the 12 MCD zones)
+
+### 📈 Real-Time Regional Health Scores (CM Dashboard)
+Using coordinates from the `complaints` table, Turf.js calculations in the CM Command Center perform real-time point-in-polygon checks (`@turf/boolean-point-in-polygon`) against these 250 ward boundaries. This enables live health scores:
+$$\text{Health Score} = \left( \frac{\text{Resolved Complaints}}{\text{Total Complaints}} \times 0.4 + \frac{\text{SLA-Compliant Complaints}}{\text{Total Complaints}} \times 0.6 \right) \times 100$$
+This score is computed dynamically and aggregated at:
+1. **Delhi-Wide (State) Level**
+2. **Zone Level (12 Administrative Zones)**
+3. **Ward Level (250 Municipal Wards)**
+
+---
+
 ## 🏗️ Application Architecture
 
 ```mermaid
@@ -717,12 +767,14 @@ graph TD
         AUTH[🏛️ Authority Dashboard]
         WRK[👷 Worker Web Interface]
         ADM[⚙️ Admin Panel]
+        CMD[👑 CM Command Center]
     end
 
     subgraph API["⚙️ API Layer (FastAPI — Python)"]
         SEVA[💬 Seva Chatbot\nGemini AI Integration]
         DGP[📍 DIGIPIN Encoder/Decoder]
         ANLX[📊 Analytics Generator]
+        WAB[💬 WhatsApp Webhook Handler]
     end
 
     subgraph DB["🗄️ Data Layer (Supabase + PostgreSQL 15)"]
@@ -738,6 +790,7 @@ graph TD
         MAPS[🗺️ Mappls Maps\nLeaflet.js]
         GAUTH[🔐 Google OAuth]
         RCAP[🛡️ Cloudflare Turnstile]
+        WA[💬 Meta WhatsApp API]
     end
 
     CIT -->|Complaint submission| API
@@ -745,6 +798,11 @@ graph TD
     AUTH -->|Dept-scoped queries| DB
     WRK -->|Status updates| DB
     ADM -->|Full access| DB
+    CMD -->|Live health scores & region status| DB
+    
+    WA -->|Webhook triggers| WAB
+    WAB -->|Database operations| DB
+    WAB -->|AI processing| GMN
 
     SEVA -->|classify + chat| GMN
     DGP -->|encode/decode| PG
