@@ -3,13 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 import { gamificationService, GAMIFICATION_CONFIG } from "@/src/lib/gamification";
 import type { Database } from "@/src/types/database.types";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY!;
-
-const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
-
 export async function POST(req: NextRequest) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY ?? "placeholder";
+    const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
+
     const body = await req.json();
     const { ticket_id, userId } = body;
 

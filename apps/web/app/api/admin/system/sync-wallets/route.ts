@@ -2,15 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/src/types/database.types";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY!;
-
-const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
-
 export async function GET(req: NextRequest) {
   try {
     console.log("[SyncWallets] Starting retroactive wallet synchronization...");
     
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY!;
+    const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
+
     // 1. Fetch all profile IDs
     const { data: profiles, error: profileError } = await supabase
       .from('profiles')

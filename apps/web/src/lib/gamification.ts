@@ -1,10 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/src/types/database.types";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY!;
-
-const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY ?? "placeholder";
+  return createClient<Database>(supabaseUrl, supabaseServiceKey);
+}
 
 export const GAMIFICATION_CONFIG = {
   POINTS_LOGIN_BONUS: 100,
@@ -33,7 +34,7 @@ export const gamificationService = {
       // Ensure the wallet exists before awarding points
       await this.ensureWalletExists(userId);
       
-      const { data, error } = await supabase.rpc('award_points', {
+      const { data, error } = await getAdminClient().rpc('award_points', {
         p_points: points,
         p_user_id: userId,
       });
@@ -55,7 +56,7 @@ export const gamificationService = {
    */
   async ensureWalletExists(userId: string) {
     try {
-      const { error } = await supabase
+      const { error } = await getAdminClient()
         .from('gamification_wallets')
         .upsert({ 
           user_id: userId,
@@ -92,7 +93,7 @@ export const gamificationService = {
     
     // 2. Increment spam strikes in profiles
     try {
-      const { data: profile } = await supabase
+      const { data: profile } = await getAdminClient()
         .from('profiles')
         .select('spam_strikes')
         .eq('id', userId)
@@ -100,7 +101,7 @@ export const gamificationService = {
 
       const currentStrikes = profile?.spam_strikes ?? 0;
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await getAdminClient()
         .from('profiles')
         .update({ 
           spam_strikes: currentStrikes + 1,

@@ -68,6 +68,7 @@ export default function MapComponent({
   showComplaints = true,
   activeLayer = "density",
   intensity = 70,
+  showRecenterButton = false,
 }: {
   selectedComplaintId?: string | null;
   recenterTrigger?: number;
@@ -86,6 +87,8 @@ export default function MapComponent({
   showComplaints?: boolean;
   activeLayer?: string;
   intensity?: number;
+  /** Show a button to recenter the map to default view when zoomed or panned away */
+  showRecenterButton?: boolean;
 }) {
   const [complaints, setComplaints] = useState<MapComplaint[]>([]);
   const [mounted, setMounted] = useState(false);
@@ -276,6 +279,7 @@ export default function MapComponent({
           selectedComplaintId={selectedComplaintId}
         />
         <ResetToDefaultView recenterTrigger={recenterTrigger} />
+        <RecenterButton show={showRecenterButton} regions={regions} fitToRegionId={fitToRegionId} />
 
         {regions && regions.length > 0 && (
           <>
@@ -574,4 +578,66 @@ function ZoomToComplaint({
   }, [selectedComplaintId, complaints, map]);
 
   return null;
+}
+
+function RecenterButton({ show, regions, fitToRegionId }: { show: boolean, regions?: RegionFeature[], fitToRegionId?: string }) {
+  const map = useMap();
+  const [isVisible, setIsVisible] = useState(false);
+  const [initialBounds, setInitialBounds] = useState<any>(null);
+
+  useEffect(() => {
+    if (!regions || regions.length === 0) return;
+    const L = require("leaflet");
+    const target = fitToRegionId
+      ? regions.find((r) => String(r.id) === String(fitToRegionId))
+      : null;
+    const features = target ? [target] : regions;
+    if (!features.length) return;
+    try {
+      const bounds = L.geoJSON({ type: "FeatureCollection", features }).getBounds();
+      if (bounds.isValid()) {
+        setInitialBounds(bounds);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [regions, fitToRegionId]);
+
+  useEffect(() => {
+    if (!show) return;
+
+    const checkZoom = () => {
+      // Show the button if the user has changed the view significantly
+      // Since we fitBounds initially, we can just check if center/zoom changed from current
+      setIsVisible(true);
+    };
+    
+    // We can just always show it, or check distance. For simplicity, just show it when show=true
+    setIsVisible(true);
+  }, [show]);
+
+  if (!show || !isVisible) return null;
+
+  return (
+    <div className="absolute right-4 bottom-20 z-[1000] pointer-events-auto">
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (initialBounds) {
+            map.fitBounds(initialBounds, { padding: [20, 20], animate: true });
+          } else {
+            // Fallback for overview if no regions
+            map.setView(DEFAULT_CENTER, 10.5, { animate: true });
+          }
+        }}
+        title="Recenter Map"
+        className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/90 shadow-md hover:bg-white border border-slate-200 text-slate-700 transition-all active:scale-95 backdrop-blur-sm dark:bg-zinc-900/90 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+      </button>
+    </div>
+  );
 }

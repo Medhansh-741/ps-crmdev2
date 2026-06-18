@@ -146,6 +146,11 @@ export const MapSection: React.FC<MapSectionProps> = ({
             placeholder={searchPlaceholder}
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchQuery.trim() !== "" && regions && regions.length > 0 && onRegionClick) {
+                onRegionClick(String(regions[0].id));
+              }
+            }}
             className="pl-8 pr-4 py-1 border border-slate-200 rounded-md text-xs w-full sm:w-48 bg-slate-50 focus:ring-1 focus:ring-emerald-500 focus:bg-white transition-all dark:border-zinc-800 dark:bg-zinc-800 dark:focus:bg-zinc-900"
           />
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -163,6 +168,7 @@ export const MapSection: React.FC<MapSectionProps> = ({
           showComplaints={showComplaints}
           activeLayer={activeLayer}
           intensity={intensity}
+          showRecenterButton={true}
         />
 
         {activeLayer !== undefined && onLayerChange && intensity !== undefined && onIntensityChange && (

@@ -5,6 +5,7 @@ import { CheckCircle2 } from "lucide-react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { useTheme } from "@/components/ThemeProvider";
+import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 
 import { CMHeader, ViewLevel } from "./_components/CMHeader";
 import { DelhiOverviewView } from "./_components/views/DelhiOverviewView";
@@ -18,6 +19,7 @@ import {
   wardRegionsForZone,
   wardByNo,
   countPointsInRegions,
+  type ComplaintPoint,
 } from "./_components/cm-geo";
 import { ZONE_BY_ID, type ZoneId } from "./_components/ward-zone-map";
 
@@ -145,6 +147,26 @@ export default function CMCommandCenterPage() {
     [zoneWardRegions, filteredPoints]
   );
 
+  const pointsByZone = useMemo(() => {
+    const map = new Map<string, ComplaintPoint[]>();
+    for (const r of zoneRegions) {
+      const id = String(r.id ?? "");
+      const pts = filteredPoints.filter((p) => booleanPointInPolygon([p.lng, p.lat], r));
+      map.set(id, pts);
+    }
+    return map;
+  }, [zoneRegions, filteredPoints]);
+
+  const pointsByWard = useMemo(() => {
+    const map = new Map<number, ComplaintPoint[]>();
+    for (const r of wards) {
+      const id = Number(r.id);
+      const pts = filteredPoints.filter((p) => booleanPointInPolygon([p.lng, p.lat], r));
+      map.set(id, pts);
+    }
+    return map;
+  }, [wards, filteredPoints]);
+
   const wardRegion = useMemo(
     () => (selectedWardNo != null ? wardByNo(wards, selectedWardNo) : undefined),
     [wards, selectedWardNo]
@@ -245,6 +267,7 @@ export default function CMCommandCenterPage() {
             trendStr={liveTrendStr}
             liveZoneScores={liveZoneScores}
             isLoading={!loaded}
+            points={points}
           />
         )}
         {view === "zone" && (
@@ -264,6 +287,7 @@ export default function CMCommandCenterPage() {
             onToggleSeverity={handleToggleSeverity}
             liveWardScores={liveWardScores}
             zoneHealthScore={selectedZoneHealthScore}
+            points={selectedZoneId ? pointsByZone.get(selectedZoneId) || [] : []}
           />
         )}
         {view === "ward" && (
@@ -281,6 +305,7 @@ export default function CMCommandCenterPage() {
             activeSeverities={activeSeverities}
             onToggleSeverity={handleToggleSeverity}
             liveWardHealthScore={selectedWardHealthScore}
+            points={selectedWardNo != null ? pointsByWard.get(selectedWardNo) || [] : []}
           />
         )}
       </div>

@@ -95,7 +95,7 @@ export const KPIStatsRow: React.FC<KPIStatsRowProps> = ({ kpis, onCardClick }) =
         });
       });
     },
-    { scope: containerRef }
+    { dependencies: [kpis], scope: containerRef }
   );
 
   return (

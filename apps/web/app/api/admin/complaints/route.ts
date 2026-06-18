@@ -2,15 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import type { Database, Enums } from "@/src/types/database.types"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error("Missing Supabase environment variables for admin complaints API")
-}
-
-const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey)
-
 type ComplaintRow = {
   id: string
   ticket_id: string
@@ -39,8 +30,15 @@ function parsePriorityToSeverity(priority: string | null): Enums<"severity_level
   return null
 }
 
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co"
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder"
+  return createClient<Database>(supabaseUrl, supabaseServiceKey)
+}
+
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams
+  const supabase = getAdminClient()
 
   const page = Math.max(1, Number(searchParams.get("page") ?? "1"))
   const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? "20")))

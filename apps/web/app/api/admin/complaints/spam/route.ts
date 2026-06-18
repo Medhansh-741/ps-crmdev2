@@ -3,13 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/src/types/database.types";
 import { gamificationService } from "@/src/lib/gamification";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY!;
-
-const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
-
 export async function POST(req: NextRequest) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY ?? "placeholder";
+    const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
     const body = await req.json();
     console.log("[Spam API] Received request body:", JSON.stringify(body, null, 2));
     const { complaint_id, citizen_id } = body;

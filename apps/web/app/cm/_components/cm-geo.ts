@@ -15,7 +15,7 @@ import type { Feature, MultiPolygon, Polygon, Position } from "geojson";
 import { supabase } from "@/src/lib/supabase";
 import { parseLocationToLatLng } from "@/lib/parse-location";
 import { ZONE_BY_ID, type ZoneId, zoneIdForWard } from "./ward-zone-map";
-import { ZoneScore } from "./cm-types";
+import { ZoneScore, KPICardData, Intervention, DepartmentPerf } from "./cm-types";
 
 export interface WardProps {
   ward_no: number;
@@ -189,6 +189,8 @@ export function wardByNo(wards: WardFeature[], wardNo: number): WardFeature | un
  * with valid coordinates are added.
  */
 export interface ComplaintPoint {
+  id: string;
+  ticket_id: string;
   lat: number;
   lng: number;
   severity: string;
@@ -199,6 +201,7 @@ export interface ComplaintPoint {
   status: string;
   created_at: string;
   ward_name: string | null;
+  escalation_level?: number;
 }
 
 export function useComplaintPoints(): { points: ComplaintPoint[]; loaded: boolean } {
@@ -210,17 +213,21 @@ export function useComplaintPoints(): { points: ComplaintPoint[]; loaded: boolea
     (async () => {
       const { data, error } = await supabase
         .from("complaints")
-        .select("location, severity, effective_severity, sla_breached, assigned_department, title, description, status, created_at, ward_name");
-      if (!alive) return;
+        .select("id, ticket_id, location, severity, effective_severity, sla_breached, assigned_department, title, description, status, created_at, ward_name, escalation_level");
+
+      console.log("Supabase browser query result:", JSON.stringify({ dataLength: data?.length, error }, null, 2));
+
       if (error || !data) {
-        setLoaded(true);
+        if (alive) setLoaded(true);
         return;
       }
       const pts = data
-        .map((c: any) => {
+        .map((c: any): ComplaintPoint | null => {
           const latLng = parseLocationToLatLng(c.location);
           if (!latLng) return null;
           return {
+            id: c.id,
+            ticket_id: c.ticket_id,
             lat: latLng.lat,
             lng: latLng.lng,
             severity: c.effective_severity || c.severity,
@@ -231,9 +238,16 @@ export function useComplaintPoints(): { points: ComplaintPoint[]; loaded: boolea
             status: c.status,
             created_at: c.created_at,
             ward_name: c.ward_name,
+            escalation_level: c.escalation_level ?? 0,
           };
         })
         .filter((p): p is ComplaintPoint => !!p);
+
+      console.log("Supabase pts parsed length:", pts.length);
+      if (data.length > 0 && pts.length === 0) {
+        console.log("First failed location:", data[0].location);
+        console.log("First failed status:", data[0].status);
+      }
       setPoints(pts);
       setLoaded(true);
     })();
@@ -270,6 +284,8 @@ export function useDelhiHealthScores() {
         trend: "+0 pts",
         zones: [] as LiveZoneHealthScore[],
         wards: {} as Record<number, { score: number; activeComplaints: number }>,
+        pointsByZone: new Map<string, ComplaintPoint[]>(),
+        pointsByWard: new Map<number, ComplaintPoint[]>(),
       };
     }
 
@@ -406,6 +422,8 @@ export function useDelhiHealthScores() {
       trend,
       zones: computedZones,
       wards: computedWards,
+      pointsByZone,
+      pointsByWard,
     };
   }, [loaded, zoneRegions, wards, points]);
 
@@ -445,4 +463,85 @@ export function useRegionCounts(
   points: { lat: number; lng: number }[]
 ): Record<string, number> {
   return useMemo(() => countPointsInRegions(regions, points), [regions, points]);
+}
+
+/** Helper function to format duration between created_at and now */
+function formatDuration(dateStr: string): string {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  if (diffHrs > 24) {
+    const days = Math.floor(diffHrs / 24);
+    const hrs = diffHrs % 24;
+    return `${days}d ${hrs}h`;
+  }
+  return `${diffHrs}h ${diffMins}m`;
+}
+
+/**
+ * Hook to calculate KPI Stats, Active Interventions, and Department Performance
+ * from an array of ComplaintPoints (overall, or filtered by zone/ward).
+ */
+export function useLiveDashboardData(points: ComplaintPoint[]) {
+  return useMemo(() => {
+    // 1. Calculate KPIs
+    const activeComplaints = points.filter(c => !["resolved", "rejected", "spam", "pending_closure"].includes(c.status)).length;
+    const criticalIssues = points.filter(c => !["resolved", "rejected", "spam", "pending_closure"].includes(c.status) && (c.severity === "L4" || c.severity === "critical" || c.severity === "crit" || c.escalation_level! > 0)).length;
+    const slaBreached = points.filter(c => !["resolved", "rejected", "spam", "pending_closure"].includes(c.status) && c.sla_breached).length;
+    
+    const resolvedTotal = points.filter(c => ["resolved", "rejected", "spam", "pending_closure"].includes(c.status)).length; 
+
+    const kpis: KPICardData[] = [
+      { id: "active", label: "Active Complaints", value: activeComplaints, change: "--", isPositive: true, comparison: "live", sparklinePoints: "M0,15 L10,12 L20,18 L30,5 L40,10 L50,15 L60,8 L70,12 L80,5 L90,10 L100,2", color: "emerald" },
+      { id: "critical", label: "Critical Issues", value: criticalIssues, change: "--", isPositive: false, comparison: "live", sparklinePoints: "M0,18 L10,15 L20,16 L30,10 L40,12 L50,8 L60,10 L70,5 L80,8 L90,2 L100,5", color: "red", animatePulse: true },
+      { id: "sla", label: "SLA Breached", value: slaBreached, change: "--", isPositive: false, comparison: "live", sparklinePoints: "M0,15 L10,18 L20,12 L30,15 L40,8 L50,10 L60,5 L70,8 L80,12 L90,5 L100,8", color: "amber" },
+      { id: "resolved", label: "Total Resolved", value: resolvedTotal, change: "--", isPositive: true, comparison: "live", sparklinePoints: "M0,15 L10,12 L20,18 L30,5 L40,10 L50,15 L60,8 L70,12 L80,5 L90,10 L100,2", color: "teal" },
+    ];
+
+    // 2. Calculate Interventions (Active Critical / SLA Breached / Escalated)
+    const interventions: Intervention[] = points
+      .filter(c => !["resolved", "rejected", "spam", "pending_closure"].includes(c.status) && (c.severity === "L4" || c.severity === "critical" || c.severity === "crit" || c.escalation_level! > 0 || c.sla_breached))
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) // oldest first
+      .slice(0, 20) // top 20
+      .map(c => ({
+        id: c.id,
+        title: c.title || `Issue ${c.ticket_id}`,
+        locality: c.ward_name || "Unknown Locality",
+        ward: c.ward_name || "Unknown Ward",
+        zone: "Delhi", // We could potentially map this if needed
+        severity: (c.severity === "L4" || c.severity === "critical" || c.severity === "crit") ? "critical" : c.severity === "L3" ? "high" : "medium",
+        time: formatDuration(c.created_at),
+        departments: c.assigned_department ? [c.assigned_department] : ["Unassigned"],
+        description: c.description || "No description provided.",
+        status: "pending" as "resolved" | "pending" | "monitoring",
+        escalated: c.escalation_level! > 0 || c.status === "escalated",
+      }));
+
+    // 3. Department Performance
+    const deptMap = new Map<string, { open: number; slaMissed: number }>();
+    points.forEach(c => {
+      const dept = c.assigned_department || "Unassigned";
+      if (!deptMap.has(dept)) {
+        deptMap.set(dept, { open: 0, slaMissed: 0 });
+      }
+      const stats = deptMap.get(dept)!;
+      if (!["resolved", "rejected", "spam", "pending_closure"].includes(c.status)) {
+        stats.open += 1;
+        if (c.sla_breached) {
+          stats.slaMissed += 1;
+        }
+      }
+    });
+
+    const departments: DepartmentPerf[] = Array.from(deptMap.entries()).map(([name, stats]) => ({
+      id: name.toLowerCase(),
+      name,
+      open: stats.open,
+      slaMissed: stats.slaMissed,
+      avgResponse: "--", 
+      color: name === "MCD" ? "bg-red-600" : name === "DJB" ? "bg-blue-500" : name === "PWD" ? "bg-slate-500" : "bg-emerald-500",
+    })).sort((a, b) => b.open - a.open);
+
+    return { kpis, interventions, departments };
+  }, [points]);
 }

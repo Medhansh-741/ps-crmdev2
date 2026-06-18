@@ -9,9 +9,6 @@ import { checkRateLimit, rateLimitKey, RATE_LIMITS } from "@/lib/rate-limit";
 
 
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY ?? supabaseAnonKey;
 const mapplsApiKey = process.env.MAPPLS_API_KEY ?? process.env.NEXT_PUBLIC_MAPPLS_API_KEY ?? "";
 const reverseGeocodeCache = new Map<string, ReverseGeo>();
 const ALLOWED_STATUSES = ["submitted", "verified", "assigned", "in_progress", "reopened", "pending_closure", "resolved", "closed"] as const;
@@ -68,11 +65,18 @@ const issueTypeAuthorityKeywords: Array<{ keywords: string[]; authority: string 
 ];
 const ndmcLocalityHints = ["connaught", "cp", "lutyens", "chanakyapuri", "janpath"];
 
-// Use a server-side Supabase client
-const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
+// Use getter functions to avoid build-time crashes if env vars are missing
+function getAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder";
+  const service = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY ?? anon;
+  return createClient<Database>(url, service);
+}
 
 function getAuthClient() {
-  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder";
+  return createClient<Database>(url, anon, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
@@ -405,7 +409,7 @@ async function findRecentDuplicate(input: {
   longitude: number;
 }): Promise<DuplicateMatch | null> {
   const since = new Date(Date.now() - DUPLICATE_LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
-  const { data, error } = await supabase
+  const { data, error } = await getAdminClient()
     .from("complaints")
     .select("id, ticket_id, title, status, created_at, location")
     .eq("category_id", input.categoryId)
@@ -567,7 +571,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await getAdminClient()
     .from("complaints")
     .insert({
       ticket_id: ticketId,
@@ -647,7 +651,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: current, error: fetchError } = await supabase
+  const { data: current, error: fetchError } = await getAdminClient()
     .from("complaints")
     .select("id, upvote_count, ticket_id, status, citizen_id")
     .eq("id", body.complaint_id)
@@ -657,7 +661,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Complaint not found" }, { status: 404 });
   }
 
-  const { data: existingVote } = await supabase
+  const { data: existingVote } = await getAdminClient()
     .from("upvotes")
     .select("id")
     .eq("citizen_id", voterCitizenId)
@@ -669,19 +673,19 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: true, complaint: current, duplicate: true });
     }
     // Remove upvote
-    await supabase.from("upvotes").delete().eq("id", existingVote.id);
-    await supabase.rpc('decrement_upvote_count', { p_complaint_id: body.complaint_id });
+    await getAdminClient().from("upvotes").delete().eq("id", existingVote.id);
+    await getAdminClient().rpc('decrement_upvote_count', { p_complaint_id: body.complaint_id });
   } else {
     if (body.action === 'downvote') {
       return NextResponse.json({ success: true, complaint: current });
     }
     // Add upvote
-    await supabase.from("upvotes").insert({ citizen_id: voterCitizenId, complaint_id: body.complaint_id });
-    await supabase.rpc('increment_upvote_count', { p_complaint_id: body.complaint_id });
+    await getAdminClient().from("upvotes").insert({ citizen_id: voterCitizenId, complaint_id: body.complaint_id });
+    await getAdminClient().rpc('increment_upvote_count', { p_complaint_id: body.complaint_id });
   }
 
   // Fetch updated count for milestone check
-  const { data: updated } = await supabase
+  const { data: updated } = await getAdminClient()
     .from("complaints")
     .select("id, upvote_count, ticket_id, status, citizen_id")
     .eq("id", body.complaint_id)
@@ -712,7 +716,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Invalid status value" }, { status: 400 });
   }
 
-  const { data: existing, error: fetchError } = await supabase
+  const { data: existing, error: fetchError } = await getAdminClient()
     .from("complaints")
     .select("id, status, ticket_id")
     .eq("id", body.complaint_id)
@@ -749,7 +753,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: updated, error: updateError } = await supabase
+  const { data: updated, error: updateError } = await getAdminClient()
     .rpc("update_complaint_status_citizen", {
       p_complaint_id: body.complaint_id,
       p_status: DB_STATUS_BY_LIFECYCLE[body.status],
@@ -767,7 +771,7 @@ export async function PUT(req: NextRequest) {
   }
 
   // Need to fetch the updated record to match previous return format
-  const { data: finalRecord } = await supabase
+  const { data: finalRecord } = await getAdminClient()
     .from("complaints")
     .select("id, ticket_id, status, updated_at, assigned_worker_id")
     .eq("id", body.complaint_id)

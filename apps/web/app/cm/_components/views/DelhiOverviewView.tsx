@@ -10,8 +10,8 @@ import { QuickActionsFooter } from "../QuickActionsFooter";
 import { InterventionReviewModal } from "../InterventionReviewModal";
 
 import { Intervention, InterventionTab, ZoneScore } from "../cm-types";
-import { delhiKpis, cmInterventions, delhiZoneScores } from "../cm-mock";
-import type { ZoneFeature } from "../cm-geo";
+import { delhiZoneScores } from "../cm-mock";
+import { ZoneFeature, ComplaintPoint, useLiveDashboardData } from "../cm-geo";
 
 export interface DelhiOverviewViewProps {
   /** 12 MCD zone polygons (unioned ward geometries). */
@@ -31,6 +31,7 @@ export interface DelhiOverviewViewProps {
   trendStr?: string;
   liveZoneScores?: ZoneScore[];
   isLoading?: boolean;
+  points: ComplaintPoint[];
 }
 
 // All / Critical / Escalated tabs
@@ -55,6 +56,7 @@ export const DelhiOverviewView: React.FC<DelhiOverviewViewProps> = ({
   trendStr = "+3 pts",
   liveZoneScores,
   isLoading = false,
+  points,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [interventionFilter, setInterventionFilter] = useState("all");
@@ -68,9 +70,11 @@ export const DelhiOverviewView: React.FC<DelhiOverviewViewProps> = ({
     );
   }, [zoneRegions, searchQuery]);
 
+  const { kpis, interventions } = useLiveDashboardData(points);
+
   // Search & tab filters for interventions
   const filteredInterventions = useMemo(() => {
-    let list = cmInterventions;
+    let list = interventions;
     if (interventionFilter !== "all") {
       const tab = escalationTabs.find((t) => t.id === interventionFilter);
       if (tab?.match) list = list.filter(tab.match);
@@ -86,12 +90,12 @@ export const DelhiOverviewView: React.FC<DelhiOverviewViewProps> = ({
       );
     }
     return list;
-  }, [interventionFilter, searchQuery]);
+  }, [interventions, interventionFilter, searchQuery]);
 
   return (
     <>
       <main className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-0">
-        <KPIStatsRow kpis={delhiKpis} onCardClick={(id) => triggerToast(`Navigating to details for KPI card: ${id}`)} />
+        <KPIStatsRow kpis={kpis} onCardClick={(id) => triggerToast(`Navigating to details for KPI card: ${id}`)} />
 
         <div className="flex flex-col xl:flex-row gap-3">
           <div className="flex-1 flex flex-col min-h-[450px] xl:h-[560px]">

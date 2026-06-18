@@ -20,15 +20,13 @@ import { InterventionReviewModal } from "../InterventionReviewModal";
 import { DepartmentPerf, Intervention } from "../cm-types";
 import type { WardFeature } from "../cm-geo";
 import {
-  wardKpis,
-  wardDepartments,
-  wardInterventions,
   wardInsights,
   wardCouncillor,
   wardLocalities,
   wardPredictionData,
   wardQuickActions,
 } from "../cm-mock";
+import { ComplaintPoint, useLiveDashboardData } from "../cm-geo";
 
 export interface WardViewProps {
   onBack: () => void;
@@ -45,6 +43,7 @@ export interface WardViewProps {
   activeSeverities: string[];
   onToggleSeverity: (severity: string) => void;
   liveWardHealthScore?: number;
+  points: ComplaintPoint[];
 }
 
 export const WardView: React.FC<WardViewProps> = ({
@@ -61,6 +60,7 @@ export const WardView: React.FC<WardViewProps> = ({
   activeSeverities,
   onToggleSeverity,
   liveWardHealthScore,
+  points,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<keyof DepartmentPerf>("open");
@@ -68,6 +68,8 @@ export const WardView: React.FC<WardViewProps> = ({
   const [interventionFilter, setInterventionFilter] = useState("all");
   const [selectedIntervention, setSelectedIntervention] = useState<Intervention | null>(null);
   const [activeActionModal, setActiveActionModal] = useState<string | null>(null);
+
+  const { kpis, interventions, departments } = useLiveDashboardData(points);
 
   const liveWardCouncillor = useMemo(() => {
     if (liveWardHealthScore === undefined) return wardCouncillor;
@@ -85,7 +87,7 @@ export const WardView: React.FC<WardViewProps> = ({
 
   // Search & tab filters for interventions
   const filteredInterventions = useMemo(() => {
-    let list = wardInterventions;
+    let list = interventions;
     if (interventionFilter !== "all") {
       const tab = escalationTabs.find((t) => t.id === interventionFilter);
       if (tab?.match) list = list.filter(tab.match);
@@ -101,7 +103,7 @@ export const WardView: React.FC<WardViewProps> = ({
       );
     }
     return list;
-  }, [interventionFilter, searchQuery, escalationTabs]);
+  }, [interventions, interventionFilter, searchQuery, escalationTabs]);
 
   const handleSort = (field: keyof DepartmentPerf) => {
     if (sortField === field) setSortAsc(!sortAsc);
@@ -112,7 +114,7 @@ export const WardView: React.FC<WardViewProps> = ({
   };
 
   const sortedDepartments = useMemo(() => {
-    return [...wardDepartments].sort((a, b) => {
+    return [...departments].sort((a, b) => {
       const valA = a[sortField];
       const valB = b[sortField];
       if (typeof valA === "number" && typeof valB === "number") {
@@ -140,7 +142,7 @@ export const WardView: React.FC<WardViewProps> = ({
   return (
     <>
       <main className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-0">
-        <KPIStatsRow kpis={wardKpis} onCardClick={(id) => triggerToast(`Navigating to details for KPI card: ${id}`)} />
+        <KPIStatsRow kpis={kpis} onCardClick={(id) => triggerToast(`Navigating to details for KPI card: ${id}`)} />
 
         <div className="flex flex-col xl:flex-row gap-3">
           <div className="flex-1 flex flex-col gap-3">

@@ -16,15 +16,12 @@ import { InterventionReviewModal } from "../InterventionReviewModal";
 import { DepartmentPerf, Intervention, InterventionTab } from "../cm-types";
 import type { WardFeature } from "../cm-geo";
 import {
-  zoneKpis,
-  zoneDepartments,
-  zoneInterventions,
   zoneInsights,
   zoneCommissioner,
-  wardHealthRows,
   zonePredictionData,
   zoneQuickActions,
 } from "../cm-mock";
+import { ComplaintPoint, useLiveDashboardData } from "../cm-geo";
 
 export interface ZoneViewProps {
   zoneName: string;
@@ -45,6 +42,7 @@ export interface ZoneViewProps {
   onToggleSeverity: (severity: string) => void;
   liveWardScores?: Record<number, { score: number; activeComplaints: number }>;
   zoneHealthScore?: number;
+  points: ComplaintPoint[];
 }
 
 // All / Critical / Escalated tabs (zone + delhi level)
@@ -70,12 +68,15 @@ export const ZoneView: React.FC<ZoneViewProps> = ({
   onToggleSeverity,
   liveWardScores,
   zoneHealthScore,
+  points,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<keyof DepartmentPerf>("open");
   const [sortAsc, setSortAsc] = useState(false);
   const [interventionFilter, setInterventionFilter] = useState("all");
   const [selectedIntervention, setSelectedIntervention] = useState<Intervention | null>(null);
+
+  const { kpis, interventions, departments } = useLiveDashboardData(points);
 
   const liveWardHealthRows = useMemo(() => {
     return wardRegions.map((w) => {
@@ -103,7 +104,7 @@ export const ZoneView: React.FC<ZoneViewProps> = ({
 
   // Search & tab filters for interventions
   const filteredInterventions = useMemo(() => {
-    let list = zoneInterventions;
+    let list = interventions;
     if (interventionFilter !== "all") {
       const tab = escalationTabs.find((t) => t.id === interventionFilter);
       if (tab?.match) list = list.filter(tab.match);
@@ -119,7 +120,7 @@ export const ZoneView: React.FC<ZoneViewProps> = ({
       );
     }
     return list;
-  }, [interventionFilter, searchQuery]);
+  }, [interventions, interventionFilter, searchQuery]);
 
   const handleSort = (field: keyof DepartmentPerf) => {
     if (sortField === field) setSortAsc(!sortAsc);
@@ -130,7 +131,7 @@ export const ZoneView: React.FC<ZoneViewProps> = ({
   };
 
   const sortedDepartments = useMemo(() => {
-    return [...zoneDepartments].sort((a, b) => {
+    return [...departments].sort((a, b) => {
       const valA = a[sortField];
       const valB = b[sortField];
       if (typeof valA === "number" && typeof valB === "number") {
@@ -145,7 +146,7 @@ export const ZoneView: React.FC<ZoneViewProps> = ({
   return (
     <>
       <main className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-0">
-        <KPIStatsRow kpis={zoneKpis} onCardClick={(id) => triggerToast(`Navigating to details for KPI card: ${id}`)} />
+        <KPIStatsRow kpis={kpis} onCardClick={(id) => triggerToast(`Navigating to details for KPI card: ${id}`)} />
 
         <div className="flex flex-col xl:flex-row gap-3">
           <div className="flex-1 flex flex-col gap-3">
