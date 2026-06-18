@@ -306,6 +306,7 @@ export default function CMCommandCenterPage() {
             onToggleSeverity={handleToggleSeverity}
             liveWardHealthScore={selectedWardHealthScore}
             points={selectedWardNo != null ? pointsByWard.get(selectedWardNo) || [] : []}
+            wardNo={selectedWardNo}
           />
         )}
       </div>

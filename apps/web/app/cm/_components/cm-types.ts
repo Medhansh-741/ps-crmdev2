@@ -134,11 +134,18 @@ export interface CouncillorData {
   party: string;
   partyColor: string;
   spouseName: string;
-  profession: string;
+  profession?: string;
   age: number;
   voterCard: string;
   complaints: number;
   resolutionTime: string;
   satisfactionRate: string;
   wardHealth: number;
+  voterSerial?: number;
+  voterPart?: number;
+  education?: string;
+  criminalCases?: number;
+  assets?: string;
+  liabilities?: string;
+  phone?: string;
 }

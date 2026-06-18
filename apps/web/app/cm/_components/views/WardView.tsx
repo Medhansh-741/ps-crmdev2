@@ -26,7 +26,7 @@ import {
   wardPredictionData,
   wardQuickActions,
 } from "../cm-mock";
-import { ComplaintPoint, useLiveDashboardData } from "../cm-geo";
+import { ComplaintPoint, useLiveDashboardData, useLiveWardCouncillor } from "../cm-geo";
 
 export interface WardViewProps {
   onBack: () => void;
@@ -44,6 +44,7 @@ export interface WardViewProps {
   onToggleSeverity: (severity: string) => void;
   liveWardHealthScore?: number;
   points: ComplaintPoint[];
+  wardNo: number | null;
 }
 
 export const WardView: React.FC<WardViewProps> = ({
@@ -61,6 +62,7 @@ export const WardView: React.FC<WardViewProps> = ({
   onToggleSeverity,
   liveWardHealthScore,
   points,
+  wardNo,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<keyof DepartmentPerf>("open");
@@ -71,13 +73,11 @@ export const WardView: React.FC<WardViewProps> = ({
 
   const { kpis, interventions, departments } = useLiveDashboardData(points);
 
+  const { councillor: dbCouncillor, loading: dbCouncillorLoading } = useLiveWardCouncillor(wardNo, points, liveWardHealthScore);
+
   const liveWardCouncillor = useMemo(() => {
-    if (liveWardHealthScore === undefined) return wardCouncillor;
-    return {
-      ...wardCouncillor,
-      wardHealth: liveWardHealthScore,
-    };
-  }, [liveWardHealthScore]);
+    return dbCouncillor;
+  }, [dbCouncillor]);
 
   const escalationTabs = useMemo(() => [
     { id: "all", label: "All" },
@@ -200,7 +200,7 @@ export const WardView: React.FC<WardViewProps> = ({
           </div>
 
           <div className="w-full xl:w-[380px] shrink-0 flex flex-col gap-3 xl:h-[954px]">
-            <CouncillorInfoCard councillor={liveWardCouncillor} />
+            <CouncillorInfoCard councillor={liveWardCouncillor} loading={dbCouncillorLoading} />
             <ActiveInterventionsPanel
               interventions={filteredInterventions}
               activeFilter={interventionFilter}
@@ -229,22 +229,22 @@ export const WardView: React.FC<WardViewProps> = ({
       />
 
       {/* ACTION MODAL: Call Councillor */}
-      {activeActionModal === "call_councillor" && (
+      {activeActionModal === "call_councillor" && liveWardCouncillor && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-2xl dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800">
             <div className="flex items-start justify-between border-b border-slate-100 pb-3 dark:border-zinc-800">
-              <h3 className="text-base font-bold text-slate-800 dark:text-white">Call Councillor Shashi Yadav</h3>
+              <h3 className="text-base font-bold text-slate-800 dark:text-white">Call Councillor {liveWardCouncillor.name.replace(/^(SH\.|MS\.|MR\.|MRS\.)\s+/i, "")}</h3>
               <button onClick={() => setActiveActionModal(null)} className="text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800 p-1 rounded-lg">
                 <X size={18} />
               </button>
             </div>
             <div className="py-4 space-y-3">
               <p className="text-xs text-slate-500 leading-relaxed">
-                Connect directly to Ward 11 councillor Shashi Yadav for urgent ground support.
+                Connect directly to {liveWardCouncillor.voterCard ? `Ward ${liveWardCouncillor.voterCard.split("-")[0]}` : "Ward"} councillor {liveWardCouncillor.name.replace(/^(SH\.|MS\.|MR\.|MRS\.)\s+/i, "")} for urgent ground support.
               </p>
               <div className="p-3 bg-slate-50 rounded-lg dark:bg-zinc-800/40 text-xs font-bold space-y-1">
                 <p className="text-slate-400 text-[9px] uppercase leading-none">Office Phone:</p>
-                <p className="text-slate-800 dark:text-white text-sm">+91 9810X XXXXX</p>
+                <p className="text-slate-800 dark:text-white text-sm">{liveWardCouncillor.phone || "+91 9810X XXXXX"}</p>
               </div>
             </div>
             <div className="flex gap-3 pt-1">
