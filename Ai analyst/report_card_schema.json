@@ -6,7 +6,7 @@
   "properties": {
     "entity_type": {
       "type": "string",
-      "enum": ["department", "worker", "authority", "ward", "category"]
+      "enum": ["department", "worker", "authority", "ward", "category", "citizen"]
     },
     "entity_id": {
       "type": "string",

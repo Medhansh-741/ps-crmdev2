@@ -49,8 +49,8 @@ class ReportCardManager:
 
     def get_report_card(self, entity_type: str, entity_id: str) -> Dict[str, Any]:
         """Calculates and returns the universal report card payload for an entity."""
-        if entity_type not in ["department", "worker", "authority", "ward", "category"]:
-            raise ValueError(f"Invalid entity type: {entity_type}")
+        if entity_type not in ["department", "worker", "authority", "ward", "category", "citizen"]:
+            raise ValueError(f"Invalid entity_type: {entity_type}")
 
         # 1. Fetch scores from database
         res = self.supabase.table("report_cards").select("*").eq("entity_type", entity_type).eq("entity_id", entity_id).execute()
@@ -120,11 +120,15 @@ class ReportCardManager:
             
             peers = res.data
             total = len(peers)
-            rank = 1
-            for idx, p in enumerate(peers):
-                if p["entity_id"] == entity_id:
-                    rank = idx + 1
-                    break
+            
+            # Calculate rank based on competition rank (1 + count of strictly greater scores)
+            target_score = float(comp_score)
+            strictly_greater = sum(1 for p in peers if float(p["composite_score"]) > target_score)
+            rank = strictly_greater + 1
+            
+            # Check if there are other peers with the same score (indicates a tie)
+            tied_count = sum(1 for p in peers if float(p["composite_score"]) == target_score)
+            prefix = "T-" if tied_count > 1 else ""
             
             # Format suffix
             num_str = str(rank)
@@ -133,7 +137,7 @@ class ReportCardManager:
             elif num_str.endswith("3") and not num_str.endswith("13"): sfx = "rd"
             else: sfx = "th"
 
-            return f"{rank}{sfx} of {total}"
+            return f"{prefix}{rank}{sfx} of {total}"
         except Exception:
             return "1st of 1"
 
@@ -143,7 +147,9 @@ class ReportCardManager:
                 "department": "assigned_department",
                 "worker": "assigned_worker_id",
                 "ward": "ward_name",
-                "category": "category_id"
+                "category": "category_id",
+                "authority": "assigned_officer_id",
+                "citizen": "citizen_id"
             }
             col = col_map.get(entity_type)
             if not col:
