@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo } from "react";
 import { X, Phone } from "lucide-react";
 import { supabase } from "@/src/lib/supabase";
 
-import { KPIStatsRow } from "../KPIStatsRow";
 import { MapSection } from "../MapSection";
 import { AIInsightsPanel } from "../AIInsightsPanel";
 import { DepartmentPerformanceTable } from "../DepartmentPerformanceTable";
@@ -72,7 +71,113 @@ export const WardView: React.FC<WardViewProps> = ({
   const [selectedIntervention, setSelectedIntervention] = useState<Intervention | null>(null);
   const [activeActionModal, setActiveActionModal] = useState<string | null>(null);
 
-  const { kpis, interventions, departments } = useLiveDashboardData(points);
+  const { interventions, departments } = useLiveDashboardData(points);
+
+  const [localities, setLocalities] = useState<any[] | null>(null);
+  const [predictionData, setPredictionData] = useState<any[] | null>(null);
+  const [expectedGrowth, setExpectedGrowth] = useState("+12%");
+  const [estimatedSlaMisses, setEstimatedSlaMisses] = useState(6);
+  const [highRiskHotspots, setHighRiskHotspots] = useState(["Roshampura", "Najafgarh Rd", "Jharoda Kalan"]);
+  const [insights, setInsights] = useState<any[] | null>(null);
+  const [performanceMetrics, setPerformanceMetrics] = useState<any>(null);
+
+  const [workforceTeams, setWorkforceTeams] = useState<any>(null);
+  const [workforceChartData, setWorkforceChartData] = useState<any>(null);
+  const [workforceActivePct, setWorkforceActivePct] = useState("71%");
+
+  const liveCategories = useMemo(() => {
+    let garbage = 0, water = 0, roads = 0, streetlights = 0, sewage = 0, others = 0;
+    points.forEach(p => {
+      const title = p.title.toLowerCase();
+      const desc = p.description.toLowerCase();
+      const dept = (p.assigned_department ?? "").toLowerCase();
+
+      if (title.includes("garbage") || title.includes("dump") || desc.includes("garbage") || desc.includes("dump") || dept === "mcd") {
+        garbage++;
+      } else if (title.includes("water") || title.includes("leak") || desc.includes("water") || desc.includes("leak") || dept === "djb") {
+        water++;
+      } else if (title.includes("road") || title.includes("pothole") || desc.includes("road") || desc.includes("pothole") || dept === "pwd") {
+        roads++;
+      } else if (title.includes("light") || title.includes("electricity") || desc.includes("light") || desc.includes("electricity")) {
+        streetlights++;
+      } else if (title.includes("sewage") || title.includes("drain") || desc.includes("sewage") || desc.includes("drain")) {
+        sewage++;
+      } else {
+        others++;
+      }
+    });
+
+    return [
+      { name: "Garbage", count: garbage, iconName: "garbage" as const, colorClass: "text-emerald-700 bg-emerald-50/70 dark:bg-emerald-950/15 dark:text-emerald-300" },
+      { name: "Water", count: water, iconName: "water" as const, colorClass: "text-blue-700 bg-blue-50/70 dark:bg-blue-950/15 dark:text-blue-300" },
+      { name: "Roads", count: roads, iconName: "roads" as const, colorClass: "text-indigo-700 bg-indigo-50/70 dark:bg-indigo-950/15 dark:text-indigo-300" },
+      { name: "Streetlights", count: streetlights, iconName: "streetlights" as const, colorClass: "text-amber-700 bg-amber-50/70 dark:bg-amber-950/15 dark:text-amber-300" },
+      { name: "Sewage", count: sewage, iconName: "sewage" as const, colorClass: "text-orange-700 bg-orange-50/70 dark:bg-orange-950/15 dark:text-orange-300" },
+      { name: "Others", count: others, iconName: "others" as const, colorClass: "text-theme-muted bg-theme-bg/40" },
+    ];
+  }, [points]);
+
+  useEffect(() => {
+    if (wardNo === null) return;
+    let active = true;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    
+    // Fetch Localities
+    fetch(`${apiUrl}/api/cm/localities?ward_no=${wardNo}`)
+      .then(res => res.json())
+      .then(data => {
+        if (active && data.localities && data.localities.length > 0) {
+          setLocalities(data.localities);
+        }
+      })
+      .catch(err => console.error("Error fetching localities:", err));
+
+    // Fetch Outlook
+    fetch(`${apiUrl}/api/cm/predictive-outlook?scope=ward&scope_id=${wardNo}`)
+      .then(res => res.json())
+      .then(data => {
+        if (active && data.data) {
+          setPredictionData(data.data);
+          setExpectedGrowth(data.expectedGrowth);
+          setEstimatedSlaMisses(data.estimatedSlaMisses);
+          setHighRiskHotspots(data.highRiskHotspots);
+        }
+      })
+      .catch(err => console.error("Error fetching outlook:", err));
+
+    // Fetch Insights
+    fetch(`${apiUrl}/api/cm/insights?scope=ward&scope_id=${wardNo}`)
+      .then(res => res.json())
+      .then(data => {
+        if (active && data.insights) setInsights(data.insights);
+      })
+      .catch(err => console.error("Error fetching insights:", err));
+
+    // Fetch Performance Metrics
+    fetch(`${apiUrl}/api/cm/ward-performance?ward_no=${wardNo}`)
+      .then(res => res.json())
+      .then(data => {
+        if (active && data.metrics) setPerformanceMetrics(data.metrics);
+      })
+      .catch(err => console.error("Error fetching performance metrics:", err));
+
+    // Fetch Workforce Status
+    fetch(`${apiUrl}/api/cm/workforce-status?scope=ward&scope_id=${wardNo}`)
+      .then(res => res.json())
+      .then(data => {
+        if (active && data.teams) {
+          setWorkforceTeams(data.teams);
+          setWorkforceChartData(data.chartData);
+          setWorkforceActivePct(data.activePercentage);
+        }
+      })
+      .catch(err => console.error("Error fetching workforce status:", err));
+
+    return () => {
+      active = false;
+    };
+  }, [wardNo]);
+
 
   const { councillor: dbCouncillor, loading: dbCouncillorLoading } = useLiveWardCouncillor(wardNo, points, liveWardHealthScore);
 
@@ -142,12 +247,10 @@ export const WardView: React.FC<WardViewProps> = ({
 
   return (
     <>
-      <main className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-0">
-        <KPIStatsRow kpis={kpis} onCardClick={(id) => triggerToast(`Navigating to details for KPI card: ${id}`)} />
-
-        <div className="flex flex-col xl:flex-row gap-3">
-          <div className="flex-1 flex flex-col gap-3">
-            <div className="flex flex-col xl:flex-row gap-3 xl:h-[650px] shrink-0">
+      <main className="flex-1 p-3 flex flex-col gap-3 min-h-0 overflow-hidden">
+        <div className="flex-1 flex flex-col xl:flex-row gap-3 min-h-0">
+          <div className="flex-1 flex flex-col gap-3 min-h-0">
+            <div className="flex flex-col xl:flex-row gap-3 flex-[5] min-h-0">
               <MapSection
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
@@ -157,16 +260,17 @@ export const WardView: React.FC<WardViewProps> = ({
                 searchPlaceholder="Search location in Ward..."
                 onBack={onBack}
                 regions={wardRegion ? [wardRegion] : undefined}
-                className="xl:h-full"
+                className="h-full"
                 activeLayer={activeLayer}
                 onLayerChange={onLayerChange}
                 intensity={intensity}
                 onIntensityChange={onIntensityChange}
                 activeSeverities={activeSeverities}
                 onToggleSeverity={onToggleSeverity}
+                complaints={points}
               />
-              <div className="w-full xl:w-80 shrink-0 flex flex-col gap-3 xl:h-full">
-                <AIInsightsPanel insights={wardInsights} />
+              <div className="w-full xl:w-[18%] shrink-0 flex flex-col gap-3 h-full min-h-0">
+                <AIInsightsPanel insights={insights || []} loading={insights === null} />
                 <DepartmentPerformanceTable
                   departments={sortedDepartments}
                   sortField={sortField}
@@ -177,30 +281,33 @@ export const WardView: React.FC<WardViewProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 shrink-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 flex-[4] min-h-0">
               <LocalityHealthTable
-                localities={wardLocalities}
+                localities={localities || []}
                 onViewAnalyticsClick={() => triggerToast("Redirecting to detailed location breakdown...")}
-                className="xl:h-full"
+                className="h-full min-h-0"
+                loading={localities === null}
               />
-              <div className="flex flex-col gap-3">
-                <ComplaintBreakdownGrid />
-                <WorkforceStatusCard activePercentage="71%" />
+              <div className="flex flex-col gap-3 h-full min-h-0">
+                <ComplaintBreakdownGrid categories={liveCategories} className="flex-1 min-h-0" />
+                <WorkforceStatusCard teams={workforceTeams || []} chartData={workforceChartData || []} activePercentage={workforceActivePct} loading={workforceTeams === null} className="flex-1 min-h-0" />
               </div>
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 h-full min-h-0">
                 <PredictiveOutlookCard
-                  data={wardPredictionData}
-                  expectedGrowth="+12%"
-                  estimatedSlaMisses={6}
-                  highRiskHotspots={["Roshampura", "Najafgarh Rd", "Jharoda Kalan"]}
+                  data={predictionData || []}
+                  expectedGrowth={expectedGrowth}
+                  estimatedSlaMisses={estimatedSlaMisses}
+                  highRiskHotspots={highRiskHotspots}
                   isDark={isDark}
+                  loading={predictionData === null}
+                  className="flex-1 min-h-0"
                 />
-                <WardPerformanceGrid />
+                <WardPerformanceGrid metrics={performanceMetrics || []} loading={performanceMetrics === null} className="flex-1 min-h-0" />
               </div>
             </div>
           </div>
 
-          <div className="w-full xl:w-[380px] shrink-0 flex flex-col gap-3 xl:h-[1154px]">
+          <div className="w-full xl:w-[22%] shrink-0 flex flex-col gap-3 min-h-0">
             <CouncillorInfoCard councillor={liveWardCouncillor} loading={dbCouncillorLoading} />
             <ActiveInterventionsPanel
               interventions={filteredInterventions}

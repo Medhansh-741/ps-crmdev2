@@ -55,7 +55,7 @@ export const CouncillorInfoCard: React.FC<CouncillorInfoCardProps> = ({
         );
       }
     },
-    { dependencies: [loading, councillor], scope: cardRef }
+    { dependencies: [loading, councillor?.name, councillor?.voterCard], scope: cardRef }
   );
 
   // If loading or councillor details are not yet available, render the pulsing skeleton loader
@@ -63,7 +63,7 @@ export const CouncillorInfoCard: React.FC<CouncillorInfoCardProps> = ({
     return (
       <div
         ref={cardRef}
-        className="bg-theme-card rounded-xl border border-theme-border p-4 shadow-sm flex-1 lg:max-w-md select-none flex flex-col gap-3.5 animate-pulse transition-colors duration-300"
+        className="bg-theme-card rounded-xl border border-theme-border p-4 shadow-sm flex-1 select-none flex flex-col gap-3.5 animate-pulse transition-colors duration-300"
       >
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -130,7 +130,7 @@ export const CouncillorInfoCard: React.FC<CouncillorInfoCardProps> = ({
   return (
     <div
       ref={cardRef}
-      className="opacity-0 bg-theme-card rounded-xl border border-theme-border p-4 shadow-sm flex-1 lg:max-w-md select-none flex flex-col gap-3.5 transition-colors duration-300"
+      className="opacity-0 bg-theme-card rounded-xl border border-theme-border p-4 shadow-sm flex-1 select-none flex flex-col gap-3.5 transition-colors duration-300"
     >
       <div className="flex items-center justify-between">
         <h3 className="text-[10px] font-bold tracking-wider text-theme-muted uppercase flex items-center gap-1.5">
@@ -160,9 +160,9 @@ export const CouncillorInfoCard: React.FC<CouncillorInfoCardProps> = ({
         {/* Right Side Info */}
         <div className="flex-1 min-w-0">
           <span className="text-[9px] font-bold text-theme-muted uppercase tracking-wider block leading-none">
-            Councillor
+            {councillor.role || "Councillor"}
           </span>
-          <h4 className="text-lg font-black text-theme-text mt-1 leading-tight truncate">
+          <h4 className="text-lg font-black text-theme-text mt-1 leading-tight break-words">
             {cleanName}
           </h4>
           <p className="text-[10px] text-theme-muted mt-2 leading-tight font-semibold">
@@ -185,7 +185,7 @@ export const CouncillorInfoCard: React.FC<CouncillorInfoCardProps> = ({
       {showAbout && (
         <div className="p-3 bg-theme-bg/30 rounded-lg border border-theme-border/50">
           <h5 className="text-[10px] font-bold text-theme-muted mb-2 uppercase tracking-wider">
-            About Councillor
+            About {councillor.role || "Councillor"}
           </h5>
           <div className="space-y-2 text-[10px] text-theme-text font-semibold">
             {councillor.age ? (
