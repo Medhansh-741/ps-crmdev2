@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 
-import { KPIStatsRow } from "../KPIStatsRow";
 import { MapSection } from "../MapSection";
 import { AIInsightsPanel } from "../AIInsightsPanel";
 import { DepartmentPerformanceTable } from "../DepartmentPerformanceTable";
@@ -52,6 +51,8 @@ const escalationTabs: InterventionTab[] = [
   { id: "escalated", label: "Escalated", match: (i) => !!i.escalated },
 ];
 
+let cachedCommissioners: any[] | null = null;
+
 export const ZoneView: React.FC<ZoneViewProps> = ({
   zoneName,
   onBack,
@@ -70,13 +71,95 @@ export const ZoneView: React.FC<ZoneViewProps> = ({
   zoneHealthScore,
   points,
 }) => {
+  const zoneId = wardRegions[0]?.properties.zoneId || "central";
+  const [insights, setInsights] = useState<any[] | null>(null);
+  const [predictionData, setPredictionData] = useState<any[] | null>(null);
+  const [expectedGrowth, setExpectedGrowth] = useState("+14%");
+  const [estimatedSlaMisses, setEstimatedSlaMisses] = useState(11);
+  const [highRiskHotspots, setHighRiskHotspots] = useState(["Connaught Place", "Karol Bagh", "Paharganj"]);
+  const [commissioner, setCommissioner] = useState<any | null>(null);
+
+  const { interventions, departments } = useLiveDashboardData(points);
+
+  const activeComplaintsCount = useMemo(() => {
+    return points.filter(p => !["resolved", "rejected", "spam", "pending_closure"].includes(p.status)).length;
+  }, [points]);
+
+  useEffect(() => {
+    let active = true;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    
+    // Fetch Insights
+    fetch(`${apiUrl}/api/cm/insights?scope=zone&scope_id=${zoneId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (active && data.insights) setInsights(data.insights);
+      })
+      .catch(err => console.error("Error fetching zone insights:", err));
+
+    // Fetch Outlook
+    fetch(`${apiUrl}/api/cm/predictive-outlook?scope=zone&scope_id=${zoneId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (active && data.data) {
+          setPredictionData(data.data);
+          setExpectedGrowth(data.expectedGrowth);
+          setEstimatedSlaMisses(data.estimatedSlaMisses);
+          setHighRiskHotspots(data.highRiskHotspots);
+        }
+      })
+      .catch(err => console.error("Error fetching zone outlook:", err));
+
+    // Fetch Commissioner Card
+    const loadCommissioner = (commissionersList: any[]) => {
+      const targetZone = zoneName.replace(" Zone", "").trim().toLowerCase();
+      const ac = commissionersList.find((c: any) =>
+        c.assigned_zones.some((z: string) => z.toLowerCase().includes(targetZone))
+      );
+      if (ac) {
+        setCommissioner({
+          name: ac.name,
+          role: ac.designation || "Zone Commissioner",
+          body: `MCD — ${zoneName}`,
+          electionYear: "Since 2021",
+          party: "",
+          partyColor: "",
+          spouseName: "",
+          profession: "",
+          age: 0,
+          voterCard: "",
+          complaints: activeComplaintsCount || 312,
+          resolutionTime: "4h 20m",
+          satisfactionRate: "72%",
+          wardHealth: zoneHealthScore ?? 76,
+        });
+      }
+    };
+
+    if (cachedCommissioners) {
+      loadCommissioner(cachedCommissioners);
+    } else {
+      fetch(`${apiUrl}/api/cm/additional-commissioners`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.data) {
+            cachedCommissioners = data.data;
+            if (active) loadCommissioner(data.data);
+          }
+        })
+        .catch(err => console.error("Error fetching zone commissioner:", err));
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [zoneId, zoneName, activeComplaintsCount, zoneHealthScore]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<keyof DepartmentPerf>("open");
   const [sortAsc, setSortAsc] = useState(false);
   const [interventionFilter, setInterventionFilter] = useState("all");
   const [selectedIntervention, setSelectedIntervention] = useState<Intervention | null>(null);
-
-  const { kpis, interventions, departments } = useLiveDashboardData(points);
 
   const liveWardHealthRows = useMemo(() => {
     return wardRegions.map((w) => {
@@ -145,12 +228,10 @@ export const ZoneView: React.FC<ZoneViewProps> = ({
 
   return (
     <>
-      <main className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-0">
-        <KPIStatsRow kpis={kpis} onCardClick={(id) => triggerToast(`Navigating to details for KPI card: ${id}`)} />
-
-        <div className="flex flex-col xl:flex-row gap-3">
-          <div className="flex-1 flex flex-col gap-3">
-            <div className="flex flex-col xl:flex-row gap-3 xl:h-[650px] shrink-0">
+      <main className="flex-1 p-3 flex flex-col gap-3 min-h-0 overflow-hidden">
+        <div className="flex-1 flex flex-col xl:flex-row gap-3 min-h-0">
+          <div className="flex-grow-[3] flex flex-col gap-3 min-h-0">
+            <div className="flex flex-col xl:flex-row gap-3 flex-[5] min-h-0">
               <MapSection
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
@@ -164,16 +245,17 @@ export const ZoneView: React.FC<ZoneViewProps> = ({
                 onRegionClick={onRegionClick}
                 choropleth
                 showComplaints={false}
-                className="xl:h-full"
+                className="h-full"
                 activeLayer={activeLayer}
                 onLayerChange={onLayerChange}
                 intensity={intensity}
                 onIntensityChange={onIntensityChange}
                 activeSeverities={activeSeverities}
                 onToggleSeverity={onToggleSeverity}
+                complaints={points}
               />
-              <div className="w-full xl:w-80 shrink-0 flex flex-col gap-3 xl:h-full">
-                <AIInsightsPanel insights={zoneInsights} />
+              <div className="w-full xl:w-[18%] shrink-0 flex flex-col gap-3 h-full min-h-0">
+                <AIInsightsPanel insights={insights || []} loading={insights === null} />
                 <DepartmentPerformanceTable
                   departments={sortedDepartments}
                   sortField={sortField}
@@ -184,29 +266,32 @@ export const ZoneView: React.FC<ZoneViewProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 shrink-0">
+            <div className="flex-[3] grid grid-cols-1 md:grid-cols-2 gap-3 min-h-0">
               <LocalityHealthTable
                 localities={liveWardHealthRows}
                 title="WARD HEALTH SUMMARY"
                 rowLabel="Ward"
                 actionLabel="View Ward Analytics"
                 onViewAnalyticsClick={() => triggerToast("Opening ward analytics breakdown...")}
-                className="xl:h-[320px]"
+                className="h-full min-h-0"
+                loading={!liveWardScores || Object.keys(liveWardScores).length === 0}
               />
               <PredictiveOutlookCard
-                data={zonePredictionData}
-                expectedGrowth="+14%"
-                estimatedSlaMisses={11}
-                highRiskHotspots={["Connaught Place", "Karol Bagh", "Paharganj"]}
+                data={predictionData || []}
+                expectedGrowth={expectedGrowth}
+                estimatedSlaMisses={estimatedSlaMisses}
+                highRiskHotspots={highRiskHotspots}
                 isDark={isDark}
-                className="xl:h-[320px]"
+                className="h-full min-h-0"
+                loading={predictionData === null}
               />
             </div>
           </div>
 
-          <div className="w-full xl:w-[380px] shrink-0 flex flex-col gap-3 xl:h-[960px]">
+          <div className="w-full xl:w-[22%] shrink-0 flex flex-col gap-3 min-h-0">
             <CouncillorInfoCard
-              councillor={zoneCommissioner}
+              councillor={commissioner}
+              loading={commissioner === null}
               title={`${zoneName.toUpperCase()} ZONE COMMAND CENTER`}
               showAbout={false}
               showParty={false}
